@@ -1,3 +1,4 @@
+import { footerSpacingError } from '../../packages/shared/src/footer-spacing-validation.mjs';
 import { createHash } from 'node:crypto';
 import { designScalesError, typographyError } from '../../packages/shared/src/design-scale-validation.mjs';
 import { publicationContentFiles } from '../fixtures/static-publication/content.mjs';
@@ -17,7 +18,7 @@ const safeFieldName = /^[a-zA-Z_][a-zA-Z0-9_-]{0,63}$/;
 const stringFields = {
   site: ['name', 'domain', 'domain_alias'],
   settings: ['site_name', 'tagline', 'logo', 'favicon', 'apple_touch_icon', 'icon_192', 'scripts_head', 'scripts_body_end', 'custom_css', 'language', 'twitter_handle', 'default_seo_suffix', 'default_meta_description', 'image_sizes_default', 'default_og_image', 'robots_txt', 'ai_crawler_policy', 'header_behavior', 'date_format', 'time_zone', 'motion', 'trailing_slash'],
-  page: ['id', 'content_type', 'template', 'title', 'breadcrumb_label', 'excerpt', 'slug', 'path', 'parent', 'language', 'content_mode', 'html_content', 'custom_css', 'seo_title', 'seo_description', 'og_title', 'og_description', 'og_image', 'seo_image_alt', 'canonical_url', 'lastmod_override', 'json_ld', 'kind', 'schema_type', 'author', 'image_sizes_default', 'status', 'date_updated', 'date_published'],
+  page: ['footer_spacing', 'id', 'content_type', 'template', 'title', 'breadcrumb_label', 'excerpt', 'slug', 'path', 'parent', 'language', 'content_mode', 'html_content', 'custom_css', 'seo_title', 'seo_description', 'og_title', 'og_description', 'og_image', 'seo_image_alt', 'canonical_url', 'lastmod_override', 'json_ld', 'kind', 'schema_type', 'author', 'image_sizes_default', 'status', 'date_updated', 'date_published'],
   partial: ['id', 'name', 'kind', 'content_mode', 'html_content', 'status', 'date_updated'],
   media: ['id', 'filename', 'cdn_url', 'alt_text', 'title', 'caption', 'mime_type'],
 };
@@ -343,7 +344,7 @@ export function projectStaticPublication(input, { siteUrl, coreCommit, published
   // Site-specific responsive widths drive block responsive fields and styles.
   if (input.settings?.responsive_breakpoints) settings.responsive_breakpoints = projectNumbers(input.settings.responsive_breakpoints, ['tablet', 'laptop', 'desktop', 'wide']);
   if (input.settings?.content_widths) settings.content_widths = projectNumbers(input.settings.content_widths, ['narrow', 'normal', 'wide']);
-  for (const [key, validate] of [['design_scales', designScalesError], ['typography', typographyError]]) {
+  for (const [key, validate] of [['footer_spacing', footerSpacingError], ['design_scales', designScalesError], ['typography', typographyError]]) {
     if (input.settings?.[key] === undefined) continue;
     const error = validate(input.settings[key]);
     if (error) throw new Error(`Invalid public ${key}: ${error}`);
@@ -361,6 +362,7 @@ export function projectStaticPublication(input, { siteUrl, coreCommit, published
   const pages = input.pages.filter((page) => ['published', 'unlisted'].includes(page.status)).map((page) => {
     if (!['html', 'blocks'].includes(page.content_mode)) throw new Error('Unsupported publication page configuration');
     const projected = assertIdentity({ ...projectStrings(page, stringFields.page), ...projectBooleans(page, ['append_seo_suffix', 'noindex', 'nofollow']), ...projectNumbers(page, ['sort_order']) });
+    if (page.footer_spacing != null && !['auto', 'none'].includes(page.footer_spacing)) throw new Error('Invalid public page.footer_spacing');
     const definition = typeIndex.get(page.content_type ?? 'page');
     if (!definition) throw new Error('Page refers to an unknown content type');
     projected.content_type = definition.id;

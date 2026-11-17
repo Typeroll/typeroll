@@ -17,7 +17,7 @@ Open your Site → **Settings**, then choose a section. On mobile, use the
 | Section      | What you can change                                                                              |
 | ------------ | ------------------------------------------------------------------------------------------------ |
 | General      | Site name, tagline, logo and icons                                                               |
-| Design       | Colors, typography, responsive widths, image sizes and render version                            |
+| Design       | Colors, typography, responsive widths, footer spacing, image sizes and render version            |
 | SEO          | Search visibility, title suffix, sharing metadata, structured data, paths and publication checks |
 | Publishing   | Hosting Group, website/media domains and preview address                                         |
 | Integrations | Core modules, email, owner review and cookie consent                                             |
@@ -857,3 +857,11 @@ cannot remotely clear an old WordPress favicon already cached by a browser for
 years. The new HTML icon URL avoids that old cache on subsequent page visits;
 saved bookmarks and pinned tabs may still need a browser refresh or re-saving.
 Existing sites receive these files on their next publication after upgrading.
+
+### Shared footer spacing
+
+From Core 0.3.40 / MCP 0.45.145, `footer_spacing` accepts a space token, pixels
+(0–320), or a mobile-first breakpoint map, for example
+`{"footer_spacing":{"mobile":"lg","laptop":"xl"}}`. `null` clears the opt-in.
+Explicit final-block spacing wins. See [Space before the footer](../../guides/design-tokens/#space-before-the-footer)
+for inheritance, Page opt-out and save warnings.

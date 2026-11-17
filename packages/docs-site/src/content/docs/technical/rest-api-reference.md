@@ -2825,6 +2825,7 @@ Create a new page. Defaults to blocks mode (same as the portal UI's "New page" b
 | `breadcrumb_label` | body | string \| null | no | Optional short breadcrumb label. Leaves Page title, SEO title and route unchanged; null/empty uses the title. |
 | `excerpt` | body | string \| null | no | Plain-text summary (up to 1000 characters) shown by template/page_excerpt ({{page.excerpt}}) and Page cards in listings. Every content type has it; when the type defines its own excerpt field the value is stored there. Saved like other content (draft until saved); null clears it. |
 | `seo_title` | body | string | no |  |
+| `footer_spacing` | body | "auto" \| "none" | no | auto uses site footer spacing unless the final block sets its own. none deliberately meets the footer edge to edge; keeps block padding and suppresses the zero-spacing warning. |
 | `append_seo_suffix` | body | boolean | no | Set false to omit the site default SEO suffix on this page. |
 | `seo_description` | body | string | no |  |
 | `og_title` | body | string | no |  |
@@ -2869,6 +2870,7 @@ Shallow-merge update on a page, including its short breadcrumb label and excerpt
 | `breadcrumb_label` | body | string \| null | no | Optional short breadcrumb label. Leaves Page title, SEO title and route unchanged; null/empty uses the title. |
 | `excerpt` | body | string \| null | no | Plain-text summary (up to 1000 characters) shown by template/page_excerpt and Page cards. Lands in the draft like other content; null clears it. |
 | `seo_title` | body | string | no |  |
+| `footer_spacing` | body | "auto" \| "none" | no | auto uses site footer spacing unless the final block sets its own. none deliberately meets the footer edge to edge; keeps block padding and suppresses the zero-spacing warning. |
 | `append_seo_suffix` | body | boolean | no | Set false to use seo_title/page title verbatim without the site suffix. |
 | `seo_description` | body | string | no |  |
 | `og_title` | body | string | no | Sharing title for OpenGraph/Twitter. Empty uses the SEO title. |
@@ -3929,6 +3931,7 @@ Patch site settings, including responsive breakpoints for block layouts and visi
 | `time_zone` | body | string \| null | no | IANA time zone that decides which day and hour it is at the business, for "today", "open now" and dated snippets; times typed into opening hours are never converted. Every site has one: new sites get the usual zone for their language (sv → Europe/Stockholm, nb → Europe/Oslo, da → Europe/Copenhagen, fi → Europe/Helsinki, en-GB → Europe/London; otherwise Europe/Stockholm). Set it when the business is elsewhere. null resets it to the zone of its language. |
 | `date_format` | body | string \| null | no | How page and card dates read (render version 14), in the page language: `medium` (default, "12 okt. 2026"), `long` ("12 oktober 2026"), `numeric` (the language's numeric order) or `iso` ("2026-10-12"); or a pattern of YYYY, MMMM, MMM, MM, M, DD and D such as "D MMMM YYYY". A Page date block with its own format keeps it. null restores the default. |
 | `motion` | body | "full" \| "reduced" \| null | no | Motion for every visitor (render version 14). `full` (default) plays what each block asks for: entrance animations, carousel autoplay, background videos, moving logo rows and scroll films. `reduced` turns all of them off for everyone; blocks show their still image or content. Visitors whose device asks for reduced motion always get the reduced version. null resets to full. |
+| `footer_spacing` | body | "none" \| "xs" \| "sm" \| "md" \| "lg" \| "xl" \| number \| object \| null | no | Opt-in shared space before the footer: a space token, px, or breakpoint map. Explicit last-block spacing (including 0) wins. null keeps historical block-owned spacing. Page.footer_spacing=none deliberately removes the shared gap. |
 | `content_widths` | body | object \| null | no | The shared content widths in px (render version 14): defaults narrow 672, normal 1040, wide 1280. Sections, containers, heroes, feature rows and calls to action use them, so blocks of the same width line up. Keep narrow ≤ normal ≤ wide; null restores the defaults. |
 | `sitewide_noindex` | body | boolean | no | Exclude public pages from search indexing; following links remains a separate setting. |
 | `external_routes` | body | object[] | no | Exact same-origin paths owned by an independent deployment, e.g. [{path:"/docs/",owner:"Documentation"}]. No wildcards. Does not configure hosting or verify remote availability. Verify each declared public URL separately. Local routes cannot be exempted. |

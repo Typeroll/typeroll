@@ -166,6 +166,7 @@ function BlockPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl
   const hoverIdRef = useRef<string | null>(null);
   const [status, setStatus] = useState<Status>('idle');
   const [error, setError] = useState<string | null>(null);
+  const [layoutWarnings, setLayoutWarnings] = useState<string[]>([]);
   const [activeBp, setActiveBp] = useState<Breakpoint>(DEFAULT_BP);
   useEffect(() => {
     if (window.matchMedia('(max-width: 1000px)').matches) setActiveBp('mobile');
@@ -925,6 +926,8 @@ function BlockPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl
         const j = await res.json().catch(() => ({})) as { error?: string };
         throw new Error(j.error ?? `Save failed (${res.status})`);
       }
+      const saved = await res.json();
+      setLayoutWarnings((saved.layout_warnings ?? []).map((warning: { message: string }) => warning.message));
       setHasWc(false);
       setDraft((d) => ({ ...d, date_updated: new Date().toISOString() }));
       setStatus('saved');
@@ -1123,6 +1126,11 @@ function BlockPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl
           )}
         </div>
       </header>
+      {layoutWarnings.length > 0 && <div role="status" data-layout-warnings style={{ flexShrink: 0, padding: '.75rem 1rem', background: '#422006', color: '#fef3c7', maxHeight: '25vh', overflow: 'auto', fontSize: '.85rem' }}>
+        <strong>Saved — check page spacing</strong>
+        {layoutWarnings.map((message, i) => <p key={i} style={{ margin: '.4rem 0', overflowWrap: 'anywhere' }}>{message}</p>)}
+        <button type="button" onClick={() => setLayoutWarnings([])}>Dismiss spacing warning</button>
+      </div>}
 
       <nav className="block-editor__mobile-nav" aria-label="Editor panels">
         {(['blocks', 'preview', 'fields'] as const).map((pane) => (
@@ -1755,6 +1763,10 @@ function MetaPanel({
         </div>
       )}
 
+      <label style={{ display: 'flex', gap: '.5rem', color: '#d4d4d8', marginBottom: '1rem' }}>
+        <input type="checkbox" checked={draft.footer_spacing === 'none'} onChange={e => onChange('footer_spacing', e.target.checked ? 'none' : 'auto')} />
+        Meet the footer edge to edge
+      </label>
       <div style={fieldGroup}>
         <label htmlFor="block-seo-title" style={fieldLabel}>SEO title</label>
         <input id="block-seo-title"

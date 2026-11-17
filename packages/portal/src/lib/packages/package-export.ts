@@ -245,7 +245,7 @@ function withoutPageItems(items: MenuItem[], dropped: { count: number }): MenuIt
 }
 
 const SEO_KEYS = ['seo_title', 'seo_description', 'og_title', 'og_description', 'og_image', 'seo_image_alt', 'noindex', 'nofollow',
-  'append_seo_suffix', 'breadcrumb_label', 'excerpt', 'kind', 'schema_type', 'json_ld', 'author', 'service', 'image_sizes_default'] as const;
+  'append_seo_suffix', 'footer_spacing', 'breadcrumb_label', 'excerpt', 'kind', 'schema_type', 'json_ld', 'author', 'service', 'image_sizes_default'] as const;
 
 function packagePage(page: Page): PackagePage {
   const seo = Object.fromEntries(SEO_KEYS.filter(key => page[key] !== undefined && page[key] !== null && page[key] !== '').map(key => [key, clone(page[key])]));
@@ -273,6 +273,7 @@ function packageDesign(settings: SiteSettings): PackageDesign {
     ...(s.colors ? { colors: clone(s.colors as Record<string, string>) } : {}),
     ...(s.typography ? { typography: clone(s.typography as Record<string, unknown>) } : {}),
     ...(s.design_scales ? { design_scales: clone(s.design_scales as Record<string, unknown>) } : {}),
+    ...(s.footer_spacing !== undefined ? { footer_spacing: clone(s.footer_spacing) } : {}),
     ...(s.content_widths ? { content_widths: clone(s.content_widths as Record<string, unknown>) } : {}),
     ...(Object.keys(roles).length ? { fonts: roles as PackageDesign['fonts'] } : {}),
     // A kit or stylesheet is the author's own subscription: only the family names travel.

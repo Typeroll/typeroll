@@ -40,6 +40,7 @@ const IMMEDIATE_PAGE_FIELDS = ['status', 'date_published', 'publish_at', 'unpubl
 const IMMEDIATE_FIELDS = ['status'] as const;
 
 export interface ContentWriteResult {
+  layout_warnings?: CommitResult['layout_warnings'];
   /** Content fields staged in the working copy. */
   staged: string[];
   /** Publish-state fields applied to the saved doc right away. */
@@ -152,6 +153,7 @@ async function applyContentWriteUncached(
     const commit = await measureRequestStep('commit', () => commitWorkingCopy(ctx, target, opts.updatedBy, opts.actor ?? 'agent', opts.overrideReason));
     result.committed = commit.committed;
     result.seo_warnings = commit.seo_warnings;
+    if (commit.layout_warnings?.length) result.layout_warnings = commit.layout_warnings;
     result.auto_redirects = [...result.auto_redirects, ...commit.auto_redirects];
     result.retired_redirects = [...result.retired_redirects, ...commit.retired_redirects];
   }

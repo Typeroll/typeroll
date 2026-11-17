@@ -7,7 +7,7 @@
 //   - v1 agents can merge → commit → the canonical doc updates
 //   - containers blocks route with working_copy leaves canonical untouched
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
 import { MAIN_VERSION_ID, paths } from '@typeroll/shared';
 import type { APIRoute } from 'astro';
@@ -297,4 +297,55 @@ it('keeps keyed import evidence in batch writes and cannot replace owner answers
   await store.updateDoc(paths.page(ORG,SITE,'source'),{fields:{programs:[{program_id:'stable/a',online:false}]},_provenance:{[path]:{source:'owner',actor:'verified-owner',updated_at:new Date().toISOString()}}});
   expect((await (await write({[path]:{source_url:'https://example.org/research'}})).json()).results[0].ok).toBe(false);
   expect((await getPage('source'))?.fields?.programs).toEqual([{program_id:'stable/a',online:false}]);
+});
+
+describe('footer spacing on deliberate save', () => {
+  beforeEach(async () => { await setup(); });
+  const blocks = [{ id: 'quote-section', type: 'core/container', data: { padding_bottom_px: 0 }, children: [{ id: 'copy', type: 'core/prose', data: { html: '<p>Request a quote.</p>' } }] }];
+  it('persists the page and returns an actionable warning without failing Save', async () => {
+    await seedPage('quote');
+    const { applyContentWrite } = await import('../../lib/content-write');
+    const result = await applyContentWrite(CTX, { kind: 'page', id: 'quote' }, { blocks }, { save: true, updatedBy: 'test' });
+    expect(result.committed).toBe(true);
+    expect(result.layout_warnings).toMatchObject([{ code: 'footer_spacing_zero', block_id: 'quote-section' }]);
+    expect((await getPage('quote'))?.blocks).toEqual(blocks);
+  });
+  it('stores a deliberate edge-to-edge choice and suppresses the warning', async () => {
+    await seedPage('quote');
+    const { applyContentWrite } = await import('../../lib/content-write');
+    const result = await applyContentWrite(CTX, { kind: 'page', id: 'quote' }, { blocks, footer_spacing: 'none' }, { save: true, updatedBy: 'test' });
+    expect(result.layout_warnings).toBeUndefined();
+    expect((await getPage('quote'))?.footer_spacing).toBe('none');
+    await expect(applyContentWrite(CTX, { kind: 'page', id: 'quote' }, { footer_spacing: 'wrong' }, { save: true, updatedBy: 'test' })).rejects.toThrow('footer_spacing');
+  });
+  it('respects route-specific spacing on the saved page', async () => {
+    const { pageFooterSpacingWarnings } = await import('../../lib/footer-spacing-warnings');
+    const ending = { ...blocks[0]!, route_overrides: { page: { data_overrides: { padding_bottom_px: 32 } } } };
+    const page = { id: 'quote', title: 'Quote', slug: 'quote', status: 'draft' as const, content_mode: 'blocks' as const, blocks: [ending] };
+    expect(await pageFooterSpacingWarnings(CTX, page, { blocks: [ending] })).toEqual([]);
+  });
+  it('does not look up layout dependencies for a field-only edit', async () => {
+    const { pageFooterSpacingWarnings } = await import('../../lib/footer-spacing-warnings');
+    const { vstore } = await import('../../lib/version-store');
+    const settings = vi.spyOn(vstore, 'settings').mockRejectedValue(new Error('Unexpected layout read'));
+    try {
+      const result = await pageFooterSpacingWarnings(CTX, { id: 'quote', title: 'Quote', slug: 'quote', status: 'draft', content_mode: 'blocks', template: 'missing', blocks }, { fields: { caption: 'Updated' } });
+      expect(result).toEqual([]);
+      expect(settings).not.toHaveBeenCalled();
+    } finally { settings.mockRestore(); }
+  });
+});
+
+it('saves and clears responsive footer settings through the public API', async () => {
+  const { token } = await setup();
+  const { PATCH } = await import('../../pages/api/v1/sites/[siteId]/settings');
+  const patch = (footer_spacing: unknown) => PATCH({ request: new Request(`http://localhost/api/v1/sites/${SITE}/settings`, { method: 'PATCH', headers: { 'content-type': 'application/json', ...bearer(token) }, body: JSON.stringify({ footer_spacing }) }), params: { siteId: SITE }, cookies: { get: () => undefined }, locals: {} } as any);
+  expect((await patch({ mobile: 'lg', desktop: 64 })).status).toBe(200);
+  const { vstore } = await import('../../lib/version-store');
+  expect((await vstore.settings(ORG, SITE, MAIN_VERSION_ID))?.footer_spacing).toEqual({ mobile: 'lg', desktop: 64 });
+  const bad = await patch({ phone: 'xl' });
+  expect(bad.status).toBe(400);
+  expect(await bad.json()).toMatchObject({ code: 'field_type_mismatch' });
+  expect((await patch(null)).status).toBe(200);
+  expect((await vstore.settings(ORG, SITE, MAIN_VERSION_ID))?.footer_spacing).toBeUndefined();
 });

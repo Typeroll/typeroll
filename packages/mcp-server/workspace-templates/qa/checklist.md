@@ -24,6 +24,9 @@
   Use card-stacking-check.cjs for whole-card excerpt/media/whitespace targets.
 - Check actual contrast on light/dark/photo backgrounds, image subjects and
   sharpness, footer balance, left-aligned last rows and heading hierarchy.
+- Check the gap before the footer on text, article and form pages at mobile and
+  desktop widths. Prefer shared `footer_spacing` (Core 0.3.40+) and review
+  `footer_spacing_zero` save warnings; record intentional edge-to-edge endings.
 - Check home title/suffix, metadata, canonical/indexing policy and JSON-LD.
 - Run check_url_parity.py and check_assets.py on the deployed candidate; compare
   final targets with the approved URL map and flatten accidental redirect chains.

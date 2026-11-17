@@ -157,6 +157,7 @@ export interface PackagePage {
 export interface PackageDesign {
   colors?: Record<string, string>;
   typography?: Record<string, unknown>;
+  footer_spacing?: import('./footer-spacing.js').FooterSpacing;
   design_scales?: Record<string, unknown>;
   content_widths?: Record<string, unknown>;
   fonts?: { heading?: string; body?: string; mono?: string; display?: string; accent?: string; size_base?: number; load?: Record<string, unknown> };

@@ -25,7 +25,7 @@ import type {
 import { vstore } from './version-store';
 import { siteSnippets } from './publishing/publication-snippets';
 import {
-  contentWellCss, siteThemeCss, platformLayer, usesCascadeLayers, PLATFORM_LAYER_ORDER_CSS, webfontFallbackCss, withGlobalBlockContent,
+  footerSpacingCss, contentWellCss, siteThemeCss, platformLayer, usesCascadeLayers, PLATFORM_LAYER_ORDER_CSS, webfontFallbackCss, withGlobalBlockContent,
   pageRobots,
   breadcrumbJsonLd,
   applyTrailingSlash,
@@ -714,6 +714,7 @@ ${blockCss ? `<style data-blocks="1">${blockCss}</style>` : ''}
 ${hideExtensionPlaceholders ? `<style data-tr-extension-mounts="1">${EXTENSION_PLACEHOLDER_HIDDEN_CSS}</style>` : ''}
 ${direction === 'rtl' ? `<style data-direction>${directionCss(direction, renderVersion)}</style>` : ''}
 ${siteStyles ? `<style data-site-styles="1">${platformLayer('styles', siteStyles, renderVersion)}</style>` : ''}
+${footerSpacingCss(settings, page) ? `<style data-footer-spacing>${footerSpacingCss(settings, page)}</style>` : ''}
 ${settings.custom_css ? `<style data-site-css="1">${styleElementText(settings.custom_css)}</style>` : ''}
 ${page.custom_css ? `<style data-page-css="1">${styleElementText(page.custom_css)}</style>` : ''}
 ${layered ? '' : `<style data-site-base-css="1">${SITE_BASE_CSS}</style>`}

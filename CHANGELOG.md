@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.3.40 (candidate, MCP 0.45.145)
+
+- Add opt-in responsive site footer spacing using space tokens or explicit px,
+  shared by static output and previews. Explicit final-block spacing wins,
+  including zero; historical layouts remain unchanged until opted in.
+- Page metadata can deliberately meet the footer edge to edge. Layout saves
+  warn about text/form endings with explicit zero bottom spacing, with block
+  and breakpoint locators, without blocking Save or slowing field-only edits.
+- Expose the settings and Page choice in the portal, API, MCP, publication
+  projection and package exchange; document them in guides and starter QA.
+
 ## 0.3.39 (candidate, MCP 0.45.144 unchanged)
 
 - Preview navigation uses native browser history and server-rendered frame URLs

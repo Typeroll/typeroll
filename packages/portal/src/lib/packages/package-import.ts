@@ -22,7 +22,7 @@
 // "new site from a package" can import into a fresh site's version.
 
 import {
-  BLOCK_TEMPLATE_ID_PATTERN, buildCoreBlockRegistry, contentPagePath, countBlockH1s, DEFAULT_CONTENT_TYPE, designScalesError,
+  footerSpacingError, BLOCK_TEMPLATE_ID_PATTERN, buildCoreBlockRegistry, contentPagePath, countBlockH1s, DEFAULT_CONTENT_TYPE, designScalesError,
   ensureBlockIds, freeId, contentWidthsError, packageMediaRefs, packageMediaUrl, paths, planPackageImport, PACKAGE_LIMITS,
   rewriteBlockReferences, siteFontsErrors, siteStyleLibraryErrors, styleContrastReport, stylePartErrors, typographyError,
   validateBlockTemplateInput, validateBlockTypeDefinition, validateMenu, validateSiteFieldValues, validateSiteStyle, validColor,
@@ -260,6 +260,7 @@ function designPatch(design: NonNullable<PackageImportPlan['design']>, settings:
   }
   if (design.typography !== undefined) { const error = typographyError(design.typography); if (error) errors.push(`design.typography: ${error}`); else patch.typography = clone(design.typography); }
   if (design.design_scales !== undefined) { const error = designScalesError(design.design_scales); if (error) errors.push(`design.design_scales: ${error}`); else patch.design_scales = clone(design.design_scales); }
+  if (design.footer_spacing !== undefined) { const error = footerSpacingError(design.footer_spacing); if (error) errors.push(`design.footer_spacing: ${error}`); else patch.footer_spacing = clone(design.footer_spacing); }
   if (design.content_widths !== undefined) { const error = contentWidthsError(design.content_widths); if (error) errors.push(`design.content_widths: ${error}`); else patch.content_widths = clone(design.content_widths); }
   if (design.fonts) {
     const fonts = Object.fromEntries(Object.entries(design.fonts).filter(([key, value]) => ['heading', 'body', 'mono', 'display', 'accent', 'size_base', 'load'].includes(key) && value !== undefined && value !== null));

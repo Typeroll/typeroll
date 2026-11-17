@@ -126,7 +126,7 @@ export const POST: APIRoute = async ({ request, params }) => {
         const warnings: Array<BlockTreeWarning | HeadingAnchorChangedWarning> = rawPatch.blocks === undefined ? [] : await treeWriteWarnings(ctx, rawPatch.blocks, await registry());
         const fresh = before ? await measureRequestStep('read_page', () => vstore.page(ctx.orgId, ctx.siteId, ctx.versionId, pageId)) : null;
         if (before && fresh) warnings.push(...await headingAnchorWarnings(ctx, existing, before, await pageDraftBody(ctx, pageId, fresh)));
-        return { page_id: pageId, ok: true, saved: result.committed || (result.staged.length === 0 && result.applied_immediately.length > 0), staged: result.staged, applied_immediately: result.applied_immediately, ...(warnings.length ? { warnings } : {}) };
+        return { ...(result.layout_warnings?.length ? { layout_warnings: result.layout_warnings } : {}), page_id: pageId, ok: true, saved: result.committed || (result.staged.length === 0 && result.applied_immediately.length > 0), staged: result.staged, applied_immediately: result.applied_immediately, ...(warnings.length ? { warnings } : {}) };
       } catch (e) {
         return { page_id: pageId, ok: false, error: e instanceof Error ? e.message : 'unknown error', ...(e instanceof WorkingCopyError && e.code ? { code: e.code } : {}), ...(e instanceof WorkingCopyError && e.details ? { details: e.details } : {}) };
       }

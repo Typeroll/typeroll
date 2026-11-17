@@ -3,7 +3,7 @@ import { SITE_SETTINGS_SECTIONS, isDesignSettingsSection, isSiteSettingsSection 
 import AppLayout from '../../../../layouts/AppLayout.astro';
 import { vstore } from '../../../../lib/version-store';
 import { loadSiteContext } from '../../../../lib/access';
-import { CONTENT_WIDTH_DEFAULTS, CONTENT_WIDTH_LIMITS, TOKEN_SCALES, TYPOGRAPHY_DEFAULTS, defaultSiteSettings, usesCustomerPublishing, resolveBreakpointWidths, BREAKPOINTS_ABOVE_MOBILE, isArchivedSite, renderVersionStatus, resolveRenderVersion, RENDER_VERSIONS, siteTimeZone, COOKIE_FOOTER_LINK_RENDER_VERSION } from '@typeroll/shared';
+import { BREAKPOINT_ORDER, CONTENT_WIDTH_DEFAULTS, CONTENT_WIDTH_LIMITS, TOKEN_SCALES, TYPOGRAPHY_DEFAULTS, defaultSiteSettings, usesCustomerPublishing, resolveBreakpointWidths, BREAKPOINTS_ABOVE_MOBILE, isArchivedSite, renderVersionStatus, resolveRenderVersion, RENDER_VERSIONS, siteTimeZone, COOKIE_FOOTER_LINK_RENDER_VERSION } from '@typeroll/shared';
 import RenderVersionSettings from '../../../../components/RenderVersionSettings';
 import TypographyPreview from '../../../../components/TypographyPreview';
 import SiteFontSettings from '../../../../components/SiteFontSettings';
@@ -151,6 +151,19 @@ const domainBlocksArchiving =
         </select>
         <p class="muted text-sm">The compact header shows the menu button at every width. Keyboard focus and an open menu keep it visible.</p>
       </div>
+    </div>
+
+    <div class="card stack" data-settings-section="design" hidden={section !== 'design'}>
+      <h2 style="font-size: 1.125rem;">Space before the footer</h2>
+      <p class="muted text-sm">One shared default for page endings. Choose a spacing step, or enter pixels. Explicit bottom spacing in the final block wins, including zero. Leave every field empty to keep existing block spacing.</p>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(8rem,1fr));gap:1rem">
+        {BREAKPOINT_ORDER.map(bp => <div class="field">
+          <label for={`setting-footer-spacing-${bp}`}>{bp[0]!.toUpperCase() + bp.slice(1)}</label>
+          <input id={`setting-footer-spacing-${bp}`} name={`footer_spacing.${bp}`} list="footer-spacing-steps" value={typeof settings.footer_spacing === 'object' ? settings.footer_spacing[bp] ?? '' : bp === 'mobile' ? settings.footer_spacing ?? '' : ''} placeholder={bp === 'mobile' ? 'e.g. xl or 48' : 'Inherit'} />
+        </div>)}
+      </div>
+      <datalist id="footer-spacing-steps">{Object.keys(TOKEN_SCALES.space).map(step => <option value={step} />)}</datalist>
+      <p class="muted text-sm">Steps follow Design scales → Space. Breakpoints follow the site widths. Page metadata → Meet the footer edge to edge omits this gap for an intentional full-bleed ending.</p>
     </div>
 
     <div class="card stack" data-settings-section="design" hidden={section !== 'design'}>

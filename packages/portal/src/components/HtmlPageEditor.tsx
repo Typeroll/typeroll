@@ -88,6 +88,7 @@ function HtmlPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl,
     setCanvasRevision((value) => value + 1);
   }
   const [copied, setCopied] = useState(false);
+  const [layoutWarnings, setLayoutWarnings] = useState<string[]>([]);
   const [seoWarnings, setSeoWarnings] = useState<string[]>([]);
 
   // The previewUrl passed in is a portal-relative path. For sharing, give
@@ -218,6 +219,7 @@ function HtmlPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl,
           lastSaved.current = JSON.stringify(updated);
           return updated;
         });
+        setLayoutWarnings((responseData.layout_warnings ?? []).map((warning: { message: string }) => warning.message));
         setSeoWarnings(Array.isArray(responseData.seo_warnings) ? responseData.seo_warnings : []);
         setStatus('saved');
         reloadPreview();
@@ -357,6 +359,7 @@ function HtmlPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl,
 
           {activeTab === 'content' && (
             <div className="stack">
+              {layoutWarnings.length > 0 && <div role="status">{layoutWarnings.map((message, i) => <p key={i}>{message}</p>)}</div>}
               {seoWarnings.length > 0 && (
                 <div className="editor__seo-warn">
                   <strong>SEO heads-up</strong>
@@ -575,6 +578,7 @@ function HtmlPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl,
               />
               <label>Page order<input type="number" step="any" value={draft.sort_order ?? ''} onChange={e => update('sort_order', e.target.value === '' ? null : Number(e.target.value))} /></label>
               <p className="muted text-sm">Lower numbers come first when sorting by page order. Empty values come last.</p>
+              <label><input type="checkbox" checked={draft.footer_spacing === 'none'} onChange={e => update('footer_spacing', e.target.checked ? 'none' : 'auto')} /> Meet the footer edge to edge</label>
               <TemplatePicker
                 siteId={siteId}
                 pageId={page.id}

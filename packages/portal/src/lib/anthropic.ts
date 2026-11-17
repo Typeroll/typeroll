@@ -159,6 +159,7 @@ const tools: Anthropic.Tool[] = [
       properties: {
         page_id: { type: 'string' },
         seo_title: { type: 'string' },
+        footer_spacing: { type: 'string', enum: ['auto', 'none'], description: 'Shared site footer spacing, or an intentional edge-to-edge ending.' },
         append_seo_suffix: { type: 'boolean', description: 'Set false to omit the site default SEO suffix on this page.' },
         seo_description: { type: 'string' },
         og_image: { type: 'string' },
@@ -1439,7 +1440,7 @@ export async function runTool(name: string, input: Record<string, unknown>, ctx:
       if (!existing) return { result: { error: 'Page not found' } };
       const update: Record<string, unknown> = {};
       for (const k of [
-        'seo_title', 'append_seo_suffix', 'seo_description', 'og_title', 'og_description', 'og_image', 'seo_image_alt',
+        'seo_title', 'append_seo_suffix', 'footer_spacing', 'seo_description', 'og_title', 'og_description', 'og_image', 'seo_image_alt',
         'canonical_url', 'noindex', 'lastmod_override',
         'schema_type', 'service', 'kind', 'author',
       ] as const) {
@@ -1546,6 +1547,7 @@ export async function runTool(name: string, input: Record<string, unknown>, ctx:
             ok: true,
             saved: commit.committed,
             seo_warnings: commit.seo_warnings,
+            ...(commit.layout_warnings?.length ? { layout_warnings: commit.layout_warnings } : {}),
             note: commit.committed ? undefined : 'Nothing to save — no unsaved draft found.',
           },
           action: { type: kind === 'partial' ? 'update_partial' : 'update_page', description: `Saved ${kind} ${id}.`, target: id, ...chatEditLink(ctx.siteId, kind, id) },
