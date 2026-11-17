@@ -1,6 +1,6 @@
 # Page save throughput
 
-Status: local candidate Core 0.3.38 / MCP 0.45.144, 2026-11-17. Not released or
+Status: PR #229 candidate Core 0.3.38 / MCP 0.45.144, 2026-11-17. Not released or
 verified on production. Customer report: a saved field-only PATCH took 20–30 s;
 a single-ID batch read took 2–3 s. No customer Page was changed in this investigation.
 
@@ -86,3 +86,33 @@ elapsed time and verify saved content/revisions, unchanged block IDs and live
 publication dependencies. Do not benchmark by editing customer content without
 specific authorization. Report staging/production timing separately from this
 transport-call budget. No seconds-per-save promise is established by this note.
+
+## Remote baseline and release blocker (2026-11-17)
+
+The existing staging release, Core 0.3.37, source
+`beb8d84e95ff9b0d40dded642eaf3f3d9961f04a`, was measured through the normal
+authenticated public API. The disconnected `e2e-core` organization's synthetic
+`e2e-customer-publishing` site received 20 temporary draft Pages, each with 100
+prose blocks and two image-related custom fields. No customer content or live
+publication changed.
+
+| Operation | Samples | Client elapsed |
+| --- | ---: | --- |
+| Batch read with one Page ID | 3 | 452–514 ms; median 464 ms |
+| Field-only PATCH with `save: true` | 5 | 2,422–2,662 ms; median 2,488 ms |
+| Batch write with 20 saved field patches | 1 | 8,349 ms total |
+
+Readback confirmed every changed field, unchanged block content/IDs and saved
+revision history. All temporary Pages, the Content type and API key were removed.
+These observations do not reproduce the customer's 20–30 seconds or isolate
+server time: Core 0.3.37 has no request timing headers. Repeat this same shape
+after the candidate reaches staging; do not infer an improvement from the local
+transport-call counts alone.
+
+PR qualification is blocked by the dependency audit:
+[GHSA-fc5q-39xc-vjpf](https://github.com/advisories/GHSA-fc5q-39xc-vjpf), reviewed
+on November 17, affects `picomatch <=4.0.7`. At this check npm's latest version
+was 4.0.7 and the advisory listed no patched version. Both Core and private Cloud
+resolve affected transitive dependencies. Do not bypass the audit or treat the
+earlier local gate as current security qualification. A dependency remedy and
+passing CI are required before merge and release.
