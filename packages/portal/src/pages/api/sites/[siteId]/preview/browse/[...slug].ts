@@ -1,5 +1,5 @@
+import { authorizeRequestTiming } from '../../../../../../lib/runtime/request-timing';
 import type { APIRoute } from 'astro';
-import { randomUUID } from 'node:crypto';
 import { requireSiteAccess } from '../../../../../../lib/access';
 import { renderPreviewBySlug } from '../../../../../../lib/render-preview';
 import { liveBaseFor } from '../../../../../../lib/site-urls';
@@ -8,7 +8,7 @@ import { getStore } from '../../../../../../lib/datastore';
 import { paths } from '@typeroll/shared';
 import type { SiteVersion } from '@typeroll/shared';
 import {
-  buildExtensionPreviewShell,
+  buildExtensionPreviewShell, previewBridgeId,
   extensionPreviewShellHeaders,
 } from '../../../../../../lib/extensions/preview-shell';
 
@@ -24,6 +24,7 @@ import {
 export const GET: APIRoute = async ({ cookies, params, request, locals }) => {
   const guard = await requireSiteAccess(cookies, params.siteId, locals);
   if (!guard.ok) return guard.response;
+  authorizeRequestTiming();
   const { site, versionId, owner_org_id } = guard.value;
 
   // params.slug is "" for root, "about" for /about, "blog/post" for /blog/post.
@@ -37,6 +38,8 @@ export const GET: APIRoute = async ({ cookies, params, request, locals }) => {
   // popping in and out.
   const url = new URL(request.url);
   const embed = url.searchParams.get('embed') === '1';
+  const consent = url.searchParams.get('consent');
+  const consentChoice = consent === 'all' || consent === 'necessary' ? consent : undefined;
   // Review compares saved content with the working copy in two isolated canvases.
   const saved = embed && url.searchParams.get('saved') === '1';
   const canvasId = embed && /^[A-Za-z0-9_-]{16,128}$/.test(url.searchParams.get('canvas') ?? '')
@@ -51,11 +54,12 @@ export const GET: APIRoute = async ({ cookies, params, request, locals }) => {
   const isFrame = url.searchParams.get('frame') === '1';
   if (!embed && !isFrame) {
     return new Response(buildExtensionPreviewShell({
+      pageUrl: request.url,
       siteId: site.id,
-      bridgeId: randomUUID(),
+      bridgeId: previewBridgeId(browseRoot, `${versionId}:${draft ? 'draft' : 'saved'}`),
       rootPath: browseRoot,
       storageScope: `${versionId}:${draft ? 'draft' : 'saved'}`,
-      carriedQuery: draft ? { draft: '1' } : {},
+      carriedQuery: { ...(draft ? { draft: '1' } : {}), ...(consentChoice ? { consent: consentChoice } : {}) },
     }), { status: 200, headers: extensionPreviewShellHeaders() });
   }
   const bridgeId = isFrame ? (url.searchParams.get('bridge') ?? '') : '';
@@ -69,6 +73,7 @@ export const GET: APIRoute = async ({ cookies, params, request, locals }) => {
 
   const html = await renderPreviewBySlug(owner_org_id, site.id, slugParts, versionId, {
     browseRoot,
+    ...(consentChoice ? { consentChoice } : {}),
     showBanner: !embed,
     liveBase: liveBase ?? undefined,
     deployedVersion: activeVersion,

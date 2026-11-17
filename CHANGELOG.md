@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.3.39 (candidate, MCP 0.45.144 unchanged)
+
+- Preview navigation uses native browser history and server-rendered frame URLs
+  so Back and Forward preserve scroll instead of replacing the restored frame.
+  Fragment navigation and the scoped Extension bridge survive history traversal.
+- Preview rendering reuses route input reads, overlaps independent content reads
+  and signs private media URLs with bounded concurrency without duplicate reads.
+  It does not cache content or authorization across requests.
+- Authorized preview responses include phase and storage timings to distinguish
+  route/content reads, rendering, media, fonts and app derivation.
+
 ## 0.3.38 (candidate, MCP 0.45.144)
 
 - Page saves reuse document reads within the write, while conditional writes still

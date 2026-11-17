@@ -200,6 +200,11 @@ export async function preparedSourceWidth(orgId: string, siteId: string, media: 
  */
 export async function privateMediaReadUrl(orgId: string, siteId: string, mediaId: string, ttlSeconds = 60, options: { variant?: string; cacheSeconds?: number } = {}) {
   const media = await getStore().getDoc<Media>(`${paths.media(orgId, siteId)}/${mediaId}`);
+  return privateMediaReadUrlForRecord(orgId, siteId, media, ttlSeconds, options);
+}
+
+/** The caller already read this record from the authorized site's media collection. */
+async function privateMediaReadUrlForRecord(orgId: string, siteId: string, media: (Media & { id: string }) | null, ttlSeconds: number, options: { variant?: string; cacheSeconds?: number } = {}) {
   if (!media?.storage || media.storage.state !== 'ready') throw new ConnectionError('The media upload is not ready.', 404);
   let key = media.storage.key, contentType = media.mime_type;
   if (options.variant !== undefined) {
@@ -230,11 +235,15 @@ export async function authorizePreviewMedia(html: string, orgId: string, siteId:
   const { replacePublicationReferences, privateMediaReferences } = await import('./media-manifest');
   const references = privateMediaReferences(html).filter(reference => reference.siteId === siteId);
   const replacements = new Map<string, string>();
-  for (const reference of references) {
-    const item = await getStore().getDoc<Media>(`${paths.media(orgId, siteId)}/${reference.mediaId}`);
-    if (!item?.storage || !html.includes(item.cdn_url)) continue;
-    if (item.storage.state !== 'ready') continue;
-    replacements.set(item.cdn_url, await privateMediaReadUrl(orgId, siteId, item.id, ttlSeconds));
+  // Bound concurrency; signing URLs never downloads or transforms image bytes.
+  // Read each media record once, even when the page uses it more than once.
+  const ids = [...new Set(references.map(reference => reference.mediaId))];
+  for (let offset = 0; offset < ids.length; offset += 4) {
+    await Promise.all(ids.slice(offset, offset + 4).map(async id => {
+      const item = await getStore().getDoc<Media>(`${paths.media(orgId, siteId)}/${id}`);
+      if (!item?.storage || item.storage.state !== 'ready' || !html.includes(item.cdn_url)) return;
+      replacements.set(item.cdn_url, await privateMediaReadUrlForRecord(orgId, siteId, item, ttlSeconds));
+    }));
   }
   return replacePublicationReferences(html, replacements);
 }

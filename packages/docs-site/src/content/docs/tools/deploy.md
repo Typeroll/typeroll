@@ -381,6 +381,21 @@ see unsaved drafts; that choice is signed into the link. Anyone holding the link
 sees unpublished content, so creating one needs write permission on the site, in
 the portal as well as through the API.
 
+From Core 0.3.39, navigation between preview pages uses ordinary browser
+history. Back and Forward restore the previous scroll position without a
+second scripted frame reload. Previews still read current CMS content when
+loaded; they do not start a static publication or prepare images.
+
+For a slow preview, inspect `Server-Timing` and `X-Typeroll-Timing-Id` on the
+preview document's response in the browser's Network panel. The outer wrapper
+and the inner page are separate requests: inspect the inner request with
+`frame=1` for rendering time. Timings distinguish route lookup, content inputs,
+rendering, media URL resolution, font planning and app-data derivation when
+applicable. These steps can overlap; do not add their durations together.
+They exclude subsequent image/font downloads and browser rendering. See
+[request timing](../pages/#diagnose-a-slow-read-or-save) for storage metrics and
+log correlation. Invalid or unauthorized preview requests expose no timings.
+
 Images in the preview are the published ones: prepared AVIF and WebP sizes
 with `srcset`, dimensions and the same loading rules (from Core 0.3.33; before,
 every page loaded each original file again). The browser keeps them while the

@@ -54,3 +54,63 @@ test('an off-site link opens in a new tab and the preview stays on the page', as
     await e2eStore.deleteTree(pageDoc);
   }
 });
+
+for (const mode of ['shared', 'session'] as const) for (const width of [375, 1280]) test(`Back and Forward restore ${mode} preview scroll without a second frame reload at ${width}px`, async ({ page, baseURL }) => {
+  await page.setViewportSize({ width, height: 800 });
+  const id = `previewhistory${Date.now()}`;
+  const ids = [id + 'a', id + 'b'];
+  const root = mode === 'shared' ? '/preview/default' : '/api/sites/default/preview/browse';
+  for (const [i, pageId] of ids.entries()) await e2eStore.set(`${DEFAULT_MAIN}/pages/${pageId}`, {
+    title: i ? 'History second page' : 'History first page', slug: pageId, path: `/${pageId}/`,
+    content_mode: 'html', status: 'published', content_type: 'page', fields: {},
+    html_content: `<h2>${i ? 'Second' : 'First'} history page</h2><div style="height:1600px"></div><a href="/${ids[1]}/?choice=one#target">Next history page</a><h2 id="target">History target</h2><div style="height:1600px"></div>`,
+  });
+  try {
+    const response = await page.request.post('/api/sites/default/preview-link', { headers: { Origin: new URL(baseURL!).origin }, data: { path: ids[0] } });
+    expect(response.status()).toBe(200);
+    const { url } = await response.json() as { url: string };
+    const rendered = page.waitForResponse(response => { const u = new URL(response.url()); return u.pathname.includes(ids[0]!) && u.searchParams.get('frame') === '1'; });
+    await page.goto(mode === 'shared' ? url + '&consent=necessary' : `${root}/${ids[0]}/?consent=necessary`);
+    const timing = (await rendered).headers()['server-timing'];
+    expect(timing).toContain('preview_render;');
+    expect(timing).toContain('preview_route;');
+    const frame = page.frameLocator('#preview');
+    const next = frame.getByRole('link', { name: 'Next history page' });
+    await next.scrollIntoViewIfNeeded();
+    const originalScroll = await frame.locator('body').evaluate(() => window.scrollY);
+    expect(originalScroll).toBeGreaterThan(500);
+    await next.click();
+    await page.waitForURL(current => current.pathname.includes(ids[1]!) && current.hash === '#target');
+    await expect(frame.getByRole('heading', { name: 'Second history page' })).toBeAttached();
+    await expect.poll(() => frame.locator('#target').evaluate(element => Math.abs(element.getBoundingClientRect().top))).toBeLessThan(100);
+    expect(new URL(page.url()).searchParams.get('choice')).toBe('one');
+    expect(new URL(page.url()).searchParams.get('consent')).toBe('necessary');
+    expect(await frame.locator('body').evaluate(() => { try { return window.localStorage.length; } catch { return 'isolated'; } })).toBe('isolated');
+
+    let backFrameRequests = 0;
+    page.on('request', request => { const u = new URL(request.url()); if (u.pathname.includes(ids[0]!) && u.searchParams.get('frame') === '1') backFrameRequests++; });
+    await page.goBack();
+    await page.waitForURL(current => current.pathname.includes(ids[0]!));
+    await expect(frame.getByRole('heading', { name: 'First history page' })).toBeAttached();
+    await expect.poll(() => frame.locator('body').evaluate(() => window.scrollY)).toBeGreaterThan(originalScroll - 10);
+    // Catch the former post-restoration replacement, rather than accepting
+    // the browser's briefly correct first paint before popstate reloads it.
+    await page.waitForTimeout(500);
+    expect(Math.abs(await frame.locator('body').evaluate(() => window.scrollY) - originalScroll)).toBeLessThan(10);
+    expect(backFrameRequests).toBeLessThanOrEqual(1);
+    await page.goForward();
+    await page.waitForURL(current => current.pathname.includes(ids[1]!));
+    await expect(frame.getByRole('heading', { name: 'Second history page' })).toBeAttached();
+    // A page opened at a fragment can subsequently be scrolled elsewhere.
+    // Back must restore that later scroll, not jump to the original fragment.
+    await frame.locator('body').evaluate(() => window.scrollTo(0, 400));
+    await expect.poll(() => frame.locator('body').evaluate(() => window.scrollY)).toBe(400);
+    await frame.getByRole('link', { name: 'Next history page' }).evaluate((element, href) => { element.setAttribute('href', href); (element as HTMLAnchorElement).click(); }, `${root}/${ids[0]}/`);
+    await page.waitForURL(current => current.pathname.includes(ids[0]!));
+    await expect(frame.getByRole('heading', { name: 'First history page' })).toBeAttached();
+    await page.goBack();
+    await page.waitForURL(current => current.pathname.includes(ids[1]!));
+    await expect(frame.getByRole('heading', { name: 'Second history page' })).toBeAttached();
+    await expect.poll(() => frame.locator('body').evaluate(() => window.scrollY)).toBe(400);
+  } finally { for (const pageId of ids) await e2eStore.deleteTree(`${DEFAULT_MAIN}/pages/${pageId}`); }
+});

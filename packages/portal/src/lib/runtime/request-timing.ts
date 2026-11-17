@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import type { StoreTransport } from '../store/sql-store';
 
 // Fixed labels only: never put paths, IDs, payloads or credentials in telemetry.
-type Step = 'schema' | 'authentication' | 'read_page' | 'readback' | 'request_body'
+type Step = 'preview_route' | 'preview_inputs' | 'preview_render' | 'preview_media' | 'preview_fonts' | 'preview_derivation' | 'schema' | 'authentication' | 'read_page' | 'readback' | 'request_body'
   | 'content_write' | 'content_validation' | 'draft_write' | 'commit'
   | 'revision' | 'page_write' | 'response'
   | 'store_get' | 'store_getMany' | 'store_list' | 'store_commit'
@@ -77,7 +77,13 @@ export function timedStoreTransport(transport: StoreTransport): StoreTransport {
 }
 
 function pageOperation(request: Request): string | null {
-  const match = new URL(request.url).pathname.match(/^\/api\/v1\/sites\/[^/]+\/pages\/([^/]+)$/);
+  const path = new URL(request.url).pathname;
+  if (request.method === 'GET') {
+    if (/^\/preview\/[^/]+(?:\/|$)/.test(path)) return 'preview.shared';
+    if (/^\/api\/sites\/[^/]+\/preview\//.test(path)) return 'preview.site';
+    if (/^\/api\/v1\/sites\/[^/]+\/pages\/[^/]+\/preview$/.test(path)) return 'preview.api';
+  }
+  const match = path.match(/^\/api\/v1\/sites\/[^/]+\/pages\/([^/]+)$/);
   if (!match) return null;
   if (request.method === 'POST' && ['batch-read', 'batch-write'].includes(match[1]!)) return `pages.${match[1]}`;
   return ['GET', 'PATCH', 'PUT'].includes(request.method) ? `pages.${request.method.toLowerCase()}` : null;
