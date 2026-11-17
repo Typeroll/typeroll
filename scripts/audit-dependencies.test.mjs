@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
 import test from 'node:test';
 
-import { BUILD_ONLY_WORKSPACES, SHIPPED_WORKSPACES, auditArguments, evaluateAudit } from './audit-dependencies.mjs';
+import { BUILD_ONLY_WORKSPACES, SHIPPED_WORKSPACES, auditArguments, dependencyFingerprint, evaluateAudit } from './audit-dependencies.mjs';
 
 const approvedUrl = 'https://example.test/approved';
 const approvals = new Map([[approvedUrl, { expires: '2027-01-01', rationale: 'Test-only approval.' }]]);
@@ -62,4 +62,23 @@ test('blocks on every shipped workspace and reports the documentation build sepa
   assert.deepEqual([...SHIPPED_WORKSPACES, ...BUILD_ONLY_WORKSPACES].sort(), names.sort());
   assert.deepEqual(auditArguments(SHIPPED_WORKSPACES, { includeRoot: true }).slice(0, 3), ['audit', '--json', '--include-workspace-root']);
   assert.ok(!auditArguments(BUILD_ONLY_WORKSPACES, { includeRoot: false }).includes('--include-workspace-root'));
+});
+
+test('accepts only the reviewed picomatch advisory on the exact dependency graph', () => {
+  const lock = { version: '1', packages: { '': { version: '1' }, 'node_modules/picomatch': { version: '4.0.7', integrity: 'original' } } };
+  const url = 'https://github.com/advisories/GHSA-fc5q-39xc-vjpf';
+  const now = new Date('2026-11-17T00:00:00Z');
+  const approvals = new Map([[url, { expires: '2026-12-01', package: 'picomatch', allowHighSeverity: true, lockFingerprint: dependencyFingerprint(lock) }]]);
+  const leaf = { severity: 'high', via: [{ url, name: 'picomatch', severity: 'high' }] };
+  const audit = auditWith({ parent: { severity: 'high', via: ['picomatch'] }, picomatch: leaf });
+  assert.equal(evaluateAudit(audit, { approvals, now, lock }).ok, true);
+  const changed = structuredClone(lock);
+  changed.packages['node_modules/picomatch'].integrity = 'different';
+  assert.equal(evaluateAudit(audit, { approvals, now, lock: changed }).ok, false);
+  assert.equal(evaluateAudit(audit, { approvals, now: new Date('2026-12-01'), lock }).ok, false);
+  assert.equal(evaluateAudit(auditWith({ picomatch: { ...leaf, severity: 'critical' } }), { approvals, now, lock }).ok, false);
+  assert.equal(evaluateAudit(auditWith({ picomatch: { ...leaf, via: [...leaf.via, { url: 'https://example.test/new', severity: 'high' }] } }), { approvals, now, lock }).ok, false);
+  assert.equal(evaluateAudit(auditWith({ other: { ...leaf, via: [{ url, name: 'other', severity: 'high' }] } }), { approvals, now, lock }).ok, false);
+  const releaseOnly = structuredClone(lock); releaseOnly.version = '2'; releaseOnly.packages[''].version = '2';
+  assert.equal(evaluateAudit(audit, { approvals, now, lock: releaseOnly }).ok, true);
 });

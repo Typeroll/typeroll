@@ -1,15 +1,39 @@
 #!/usr/bin/env node
 
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
-export const APPROVED_ADVISORIES = new Map([]);
+// Owner-approved continuation of the unchanged production dependency graph.
+// This accepts existing risk; it does not claim the vulnerable code is unreachable.
+export const APPROVED_ADVISORIES = new Map([[
+  'https://github.com/advisories/GHSA-fc5q-39xc-vjpf',
+  { expires: '2026-12-01', package: 'picomatch', allowHighSeverity: true,
+    lockFingerprint: 'd81815b3c75465cc8bcc2f252ef2f180752d515d169332e5971e09f72466fa0e',
+    rationale: 'Approved 2026-11-17: unchanged production dependencies and no new glob input paths; review or upgrade by December 1. See docs/security-advisory-exceptions.md.' },
+]]);
+
+/** Ignore only local release versions, never dependency versions or integrity. */
+export function dependencyFingerprint(lock) {
+  const normalized = structuredClone(lock);
+  delete normalized.version;
+  for (const [name, pkg] of Object.entries(normalized.packages ?? {})) {
+    if (name === '' || /^packages\/[^/]+$/.test(name)) delete pkg.version;
+  }
+  return createHash('sha256').update(JSON.stringify(normalized)).digest('hex');
+}
 
 const BLOCKING_SEVERITIES = new Set(['high', 'critical']);
 
-function approvalFor(advisory, now, approvals) {
+function approvalFor(advisory, now, approvals, severity, fingerprint) {
   const approval = approvals.get(advisory.url);
   if (!approval) return { approved: false, reason: `unapproved advisory ${advisory.url ?? advisory.source ?? 'unknown'}` };
+
+  if (BLOCKING_SEVERITIES.has(severity) && (severity !== 'high' || !approval.allowHighSeverity || approval.package !== advisory.name || !approval.lockFingerprint))
+    return { approved: false, reason: `${severity} severity is not explicitly approved for this dependency` };
+  if (approval.lockFingerprint && approval.lockFingerprint !== fingerprint)
+    return { approved: false, reason: 'approved production dependency graph changed; review the exception again' };
 
   const expiresAt = new Date(`${approval.expires}T00:00:00Z`);
   if (Number.isNaN(expiresAt.valueOf())) return { approved: false, reason: `invalid approval expiry ${approval.expires}` };
@@ -21,6 +45,7 @@ function approvalFor(advisory, now, approvals) {
 export function evaluateAudit(audit, options = {}) {
   const now = options.now ?? new Date();
   const approvals = options.approvals ?? APPROVED_ADVISORIES;
+  const fingerprint = dependencyFingerprint(options.lock ?? JSON.parse(readFileSync(new URL('../package-lock.json', import.meta.url), 'utf8')));
   const vulnerabilities = audit?.vulnerabilities ?? {};
   const memo = new Map();
   const visiting = new Set();
@@ -31,7 +56,7 @@ export function evaluateAudit(audit, options = {}) {
 
     const vulnerability = vulnerabilities[name];
     if (!vulnerability) return { approved: false, reasons: [`missing vulnerability detail for ${name}`], advisories: [] };
-    if (BLOCKING_SEVERITIES.has(vulnerability.severity)) {
+    if (vulnerability.severity === 'critical') {
       const result = { approved: false, reasons: [`${name} has ${vulnerability.severity} severity`], advisories: [] };
       memo.set(name, result);
       return result;
@@ -48,7 +73,7 @@ export function evaluateAudit(audit, options = {}) {
         continue;
       }
 
-      const result = approvalFor(via, now, approvals);
+      const result = approvalFor(via, now, approvals, via.severity ?? vulnerability.severity, fingerprint);
       if (!result.approved) reasons.push(`${name}: ${result.reason}`);
       else advisories.push(via.url);
     }

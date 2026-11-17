@@ -116,3 +116,8 @@ was 4.0.7 and the advisory listed no patched version. Both Core and private Clou
 resolve affected transitive dependencies. Do not bypass the audit or treat the
 earlier local gate as current security qualification. A dependency remedy and
 passing CI are required before merge and release.
+
+The owner subsequently approved an exception for the unchanged production risk.
+The comparison, exact lock binding and December 1 expiry are recorded in
+[security advisory exceptions](security-advisory-exceptions.md). Qualification
+must still pass with that explicit exception before any release.
