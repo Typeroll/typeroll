@@ -82,3 +82,15 @@ test('accepts only the reviewed picomatch advisory on the exact dependency graph
   const releaseOnly = structuredClone(lock); releaseOnly.version = '2'; releaseOnly.packages[''].version = '2';
   assert.equal(evaluateAudit(audit, { approvals, now, lock: releaseOnly }).ok, true);
 });
+
+
+test('peer cycles require an approved concrete advisory and retain other failures', () => {
+  const graph = {
+    first: { severity: 'moderate', via: ['second'] },
+    second: { severity: 'moderate', via: ['first', 'leaf'] },
+    leaf: { severity: 'moderate', via: [{ url: approvedUrl }] },
+  };
+  assert.equal(evaluateAudit(auditWith(graph), { approvals, now }).ok, true);
+  assert.equal(evaluateAudit(auditWith({ first: { severity: 'moderate', via: ['first'] } }), { approvals, now }).ok, false);
+  assert.equal(evaluateAudit(auditWith({ ...graph, leaf: { severity: 'moderate', via: [{ url: 'https://example.test/unapproved' }] } }), { approvals, now }).ok, false);
+});
