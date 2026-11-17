@@ -137,8 +137,10 @@ screens without a wrapping container.
 `body_padding_px` and `radius_px` control article-card proportions. Set
 `appearance: "card"` for a joined image and panel, and `shadow` to `default`,
 `none` or `subtle`. `whole_card_link: true` creates one stretched title link when
-there is no secondary action and the title and URL are present. A download or
-separate page action disables that whole-card mode; anchors are never nested.
+the title and URL are present, so the whole card opens the page. From render
+version 22 an `action_label` keeps it, because the label links to the same
+page; up to version 21 it turns the whole-card mode off. A download link always
+turns it off, because it goes elsewhere. Anchors are never nested.
 
 Horizontal cards use `layout: "row"` with `image_width_percent` (10–70, default 40).
 Missing media leaves no empty image column. `action_label` adds a separate page

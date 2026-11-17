@@ -25,8 +25,12 @@ real deploy:
    and use its `frame_url`. Give the owner `url` to review, never `frame_url`.
 2. Save the working copies you want to publish. Unsaved working copies are not
    deployed.
-3. Run `trigger_deploy` with `dry_run: true` and read `get_publication_impact`.
-   If it lists changes you did not make, stop and find out whose they are.
+3. Read `get_publication_plan`: what ships, what blocks the publication now,
+   what only slows it, how long it usually takes and the steps left. If it
+   lists changes you did not make, stop and find out whose they are; changed
+   configuration names its paths and `changed_by`.
+4. Run `trigger_deploy` with `dry_run: true`. It validates the saved source
+   and records the same blockers as `build_outlook`.
 
 After switching an app's version, dry-run and publish soon: the live site keeps
 the version it was published with until the next publication.
@@ -80,6 +84,14 @@ as the build would after media preparation. It does not prove that Astro
 compilation succeeds or that the rendered pages pass every other check. Other self-hosted adapters may build
 locally without uploading. Inspect the reported phase; a successful dry run has
 `dry_run: true` and no `deploy_url`.
+
+From Core 0.3.35 a dry run also records `build_outlook` on the job: whether the
+real publication would be refused now and why. Its `blockers` are build setup or
+a build engine whose Node.js is older than this Typeroll requires. Its `notes`
+are things that only make the publication slower, such as the engine being
+updated first or images still being prepared. With blockers, `would_fail` is
+`true` and the phase starts with "publication would fail:". The job still
+succeeds, because it validated the source.
 
 ### Missing media
 
@@ -167,8 +179,50 @@ last verified publication. `changes_known` says whether there was one.
 Without a baseline, the next publication still builds and publishes every
 saved public page, exactly as with one; only the preview is missing. Publish
 once to record a baseline for later comparisons. Until then, run
-`trigger_deploy` with `dry_run: true` to validate the full build without
-publishing (a dry run does not record a baseline).
+`trigger_deploy` with `dry_run: true` to validate the saved source without
+publishing (a dry run does not build and does not record a baseline).
+
+A changed configuration entry (`kind: "configuration"`, such as Runtime
+connections, Extensions, Apps or Site settings) lists `details`, the setting
+paths that changed. Technical settings the built site publishes, such as
+extension versions and endpoints, show `before` and `after`. Site settings show
+only the path, because they can hold anything the owner typed. `changed_by` lists
+the records that changed after the baseline was published, each with a time:
+
+- an extension release that the installation uses automatically;
+- installation and app changes;
+- extension audit events and API writes, with actor ids;
+- endpoints derived from the Typeroll installation.
+
+A baseline published before Core 0.3.36 has no recorded paths and says
+`details_unavailable: "baseline_predates_details"`.
+
+`build_engine` compares the Node.js version the organization's build engine
+runs (`node_version`) with the one this Typeroll builds with
+(`required_node_version`). `blocks_publication: true` means a publication is
+refused until an organization admin updates the engine; with automatic engine
+updates on, the publication updates it first.
+
+## `get_publication_plan`
+
+One read-only answer before publishing (Core 0.3.36; REST `GET
+/api/v1/sites/{siteId}/publishing/plan`):
+
+- `verdict`: `ready`, `ready_with_notes` or `blocked`;
+- `blockers`: what refuses the publication now: setup, an engine whose Node.js
+  is too old, a publication of this site already running, or content that
+  cannot be compared;
+- `notes`: what only makes it slower: the engine is updated first, images
+  are still being prepared, other builds in the organization go first, or every
+  page is rebuilt;
+- `steps`: what is left, in order, each with the tool that does it;
+- `estimate`: `typical_minutes` from the site's last successful publications
+  and `longer_because`;
+- `targets`, `production`, `build_engine` and `impact`, the full
+  `get_publication_impact` comparison.
+
+It starts nothing: an engine update and the publication stay explicit calls.
+The portal's Publish menu shows the same blockers, notes and estimate.
 
 `platform_changes` lists what Typeroll itself changed since the baseline, for
 example after a Typeroll release. These entries are never counted in `total` or
