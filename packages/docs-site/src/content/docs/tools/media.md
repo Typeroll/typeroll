@@ -681,3 +681,34 @@ Over REST: `POST /api/v1/sites/{siteId}/media/purge`, with an optional JSON body
 Permanent deletion of the site (`delete_site`) is blocked with
 `media_present` until this purge has removed every media record. See
 [Delete a site](../../guides/delete-a-site/).
+
+## Replace a file everywhere
+
+`replace_media` records a library-wide replacement without rewriting Pages,
+partials or templates. Upload the replacement file first, then inspect the dry run:
+
+```text
+replace_media media_id="old-image" replacement_media_id="new-image" dry_run=true
+replace_media media_id="old-image" replacement_media_id="new-image" dry_run=false
+```
+
+REST: `POST /api/v1/sites/{siteId}/media/{mediaId}/replace` with
+`{"replacement_media_id":"new-image","dry_run":true}`. Dry run is the default.
+Site administrator access is required; installation credentials cannot perform
+this operation. Both files must belong to the same Site and the target must have
+finished uploading. Cycles and missing targets are rejected.
+
+This affects that Site's media library across **all versions**. Previews and the
+next normal publication resolve saved URLs and registered aliases to the new file.
+Existing live output remains unchanged until publication. A domain-only rebuild
+keeps its previously frozen media. Neither file is deleted or copied, and no Page
+revision is created (`pages_written: 0`). Unrelated files are unaffected.
+
+Page-specific alt text, captions, links and crop settings are not rewritten:
+review them if the image's meaning or proportions change. To undo, send
+`replacement_media_id: null` with `dry_run: false`, then publish normally when
+ready. A file that another library item uses as its replacement cannot be deleted
+until that relationship is cleared or changed.
+
+For changing only selected Pages, use `batch_update_pages` with small field-only
+patches instead. Both operations save CMS state; neither publishes automatically.

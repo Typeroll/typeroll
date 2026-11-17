@@ -13,6 +13,8 @@
 
 import { pageAuthorityFields, type Page } from '@typeroll/shared';
 import { vstore } from './version-store';
+import { withWriteReadCache } from './datastore';
+import { measureRequestStep } from './runtime/request-timing';
 import { apiConflictMessage, applyFieldAuthority, type WriteActor } from './field-authority';
 import { pageAddress, pageContentType } from './page-fields';
 import { markSiteDirty } from './auto-deploy';
@@ -60,6 +62,13 @@ export async function applyContentWrite(
   target: WcTarget,
   rawFields: Record<string, unknown>,
   opts: { save?: boolean; updatedBy: string; actor?: WriteActor; overrideReason?: string; answerSources?: Record<string, { source_url?: string; import_run_id?: string }> },
+): Promise<ContentWriteResult> {
+  return measureRequestStep('content_write', () => withWriteReadCache(() => applyContentWriteUncached(ctx, target, rawFields, opts)));
+}
+
+async function applyContentWriteUncached(
+  ctx: WcCtx, target: WcTarget, rawFields: Record<string, unknown>,
+  opts: Parameters<typeof applyContentWrite>[3],
 ): Promise<ContentWriteResult> {
   const result: ContentWriteResult = {
     staged: [],
@@ -127,9 +136,9 @@ export async function applyContentWrite(
   }
 
   // Content → working copy (whitelisted per kind).
-  const content = await filterWcFields(ctx, target, fields);
+  const content = await measureRequestStep('content_validation', () => filterWcFields(ctx, target, fields));
   if (Object.keys(content).length > 0) {
-    await mergeWorkingCopy(ctx, target, content, opts.updatedBy, opts.answerSources);
+    await measureRequestStep('draft_write', () => mergeWorkingCopy(ctx, target, content, opts.updatedBy, opts.answerSources));
     result.staged = Object.keys(content);
   }
 
@@ -140,7 +149,7 @@ export async function applyContentWrite(
   }
 
   if (opts.save) {
-    const commit = await commitWorkingCopy(ctx, target, opts.updatedBy, opts.actor ?? 'agent', opts.overrideReason);
+    const commit = await measureRequestStep('commit', () => commitWorkingCopy(ctx, target, opts.updatedBy, opts.actor ?? 'agent', opts.overrideReason));
     result.committed = commit.committed;
     result.seo_warnings = commit.seo_warnings;
     result.auto_redirects = [...result.auto_redirects, ...commit.auto_redirects];

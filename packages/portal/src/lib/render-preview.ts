@@ -784,6 +784,8 @@ function escapeAttr(s: string): string {
 }
 
 async function resolvePreviewMedia(html: string, orgId: string, siteId: string, opts: PreviewOptions) {
+  const { applySiteMediaReplacements } = await import('./media/replacement');
+  html = await applySiteMediaReplacements(html, orgId, siteId);
   if (opts.sharedMediaToken) return html;
   const { authorizePreviewMedia } = await import('./publishing/media-storage');
   return authorizePreviewMedia(html, orgId, siteId);

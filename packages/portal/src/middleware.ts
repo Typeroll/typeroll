@@ -1,12 +1,14 @@
 import { withAccessRequest, OrganizationAccessError } from './lib/organization-access';
 import { requireCurrentDataSchema } from './lib/data-schema';
 import { defineMiddleware } from 'astro:middleware';
+import type { MiddlewareHandler } from 'astro';
 import { MAIN_VERSION_ID } from '@typeroll/shared';
 import { enforceCsrf } from './lib/csrf';
 import { getSessionIdentity } from './lib/auth';
 import { serviceRole } from './lib/release';
 import { schedulingMode } from './lib/scheduling/transport';
 import { StorageDocumentError } from './lib/firestore-codec';
+import { measureRequestStep, withApiRequestTiming } from './lib/runtime/request-timing';
 
 /**
  * The active site version (main vs a branch) travels in a cookie. Middleware
@@ -100,9 +102,9 @@ function applyFramingPolicy(pathname: string, response: Response): Response {
   }
 }
 
-export const onRequest = defineMiddleware(async (context, next) => {
+const handleRequest = (async (context, next) => {
   if (!['/api/healthz', '/api/version'].includes(context.url.pathname)) {
-    try { await requireCurrentDataSchema(); }
+    try { await measureRequestStep('schema', () => requireCurrentDataSchema()); }
     catch {
       return new Response('Typeroll is being upgraded. Please try again shortly.', {
         status: 503, headers: { 'Cache-Control': 'no-store', 'Retry-After': '60', 'Content-Type': 'text/plain; charset=utf-8' },
@@ -153,4 +155,6 @@ export const onRequest = defineMiddleware(async (context, next) => {
     }
     throw error;
   }
-});
+}) satisfies MiddlewareHandler;
+
+export const onRequest = defineMiddleware((context, next) => withApiRequestTiming(context.request, async () => handleRequest(context, next)));

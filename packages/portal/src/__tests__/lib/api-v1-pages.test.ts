@@ -8,6 +8,7 @@ import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
 import { MAIN_VERSION_ID, paths } from '@typeroll/shared';
 import type { APIRoute } from 'astro';
 import type { Site, SiteVersion } from '@typeroll/shared';
+import { withApiRequestTiming } from '../../lib/runtime/request-timing';
 
 const ORG = 'orgone';
 const SITE = 'mysite';
@@ -42,6 +43,7 @@ async function seedPage(id: string, doc: Record<string, unknown>): Promise<void>
 }
 
 interface CallInit {
+  timing?: boolean;
   headers?: HeadersInit;
   /** Either an already-stringified body or any JSON-serializable value. */
   body?: unknown;
@@ -65,8 +67,33 @@ async function callRoute(
     headers: { 'content-type': 'application/json', ...(init?.headers ?? {}) },
     body,
   });
-  return handler({ request: req, params, cookies: { get: () => undefined } as any, locals: {} as any } as any) as Promise<Response>;
+  const run = async () => handler({ request: req, params, cookies: { get: () => undefined } as any, locals: {} as any } as any);
+  return init?.timing ? withApiRequestTiming(req, run) : run();
 }
+
+it('returns phase timings for an authenticated saved field patch and a batch read', async () => {
+  const { token } = await setup();
+  const { getStore } = await import('../../lib/datastore');
+  await getStore().setDoc(paths.contentType(ORG, SITE, 'article', MAIN_VERSION_ID), {
+    name: 'Article', slug: 'article', route_template: '/articles/{slug}/', fields: [{ name: 'featured_image_alt', type: 'text' }],
+  });
+  await seedPage('example', { content_type: 'article', fields: { featured_image_alt: 'Before' } });
+  const saved = await callRoute(import('../../pages/api/v1/sites/[siteId]/pages/[pageId]'), 'PATCH',
+    `https://portal.test/api/v1/sites/${SITE}/pages/example`, { siteId: SITE, pageId: 'example' },
+    { timing: true, headers: bearer(token), body: { fields: { featured_image_alt: 'After' }, save: true } });
+  expect(saved.status).toBe(200);
+  expect(await saved.json()).toMatchObject({ saved: true, page: { fields: { featured_image_alt: 'After' } } });
+  for (const phase of ['authentication', 'read_page', 'content_validation', 'draft_write', 'revision', 'page_write', 'readback', 'response']) {
+    expect(saved.headers.get('server-timing')).toContain(`${phase};dur=`);
+  }
+  const read = await callRoute(import('../../pages/api/v1/sites/[siteId]/pages/batch-read'), 'POST',
+    `https://portal.test/api/v1/sites/${SITE}/pages/batch-read`, { siteId: SITE },
+    { timing: true, headers: bearer(token), body: { page_ids: ['example'] } });
+  expect(read.status).toBe(200);
+  expect(read.headers.get('server-timing')).toContain('authentication;dur=');
+  expect(read.headers.get('server-timing')).toContain('read_page;dur=');
+  expect(read.headers.get('server-timing')).not.toContain('page_write;dur=');
+});
 
 function bearer(token: string): HeadersInit {
   return { authorization: `Bearer ${token}` };
@@ -644,6 +671,17 @@ describe('POST /api/v1/sites/{siteId}/pages/batch-read', () => {
 });
 
 describe('POST /api/v1/sites/{siteId}/pages/batch-write', () => {
+  it('rejects duplicate page IDs before making any writes', async () => {
+    const { token } = await setup();
+    await seedPage('home', { title: 'Original' });
+    const response = await callRoute(import('../../pages/api/v1/sites/[siteId]/pages/batch-write'), 'POST', `http://localhost/api/v1/sites/${SITE}/pages/batch-write`, { siteId: SITE }, {
+      headers: bearer(token), body: [{ page_id: 'home', patch: { title: 'First' }, save: true }, { page_id: 'home', patch: { title: 'Second' }, save: true }],
+    });
+    expect(response.status).toBe(400);
+    const { getStore } = await import('../../lib/datastore');
+    expect(await getStore().getDoc(paths.page(ORG, SITE, 'home', MAIN_VERSION_ID))).toMatchObject({ title: 'Original' });
+  });
+
   beforeEach(async () => { await resetDatastore(); });
 
   it('reports status-only patches as saved without committing existing content drafts', async () => {
@@ -661,6 +699,7 @@ describe('POST /api/v1/sites/{siteId}/pages/batch-write', () => {
     const { token } = await setup();
     await seedPage('home', { title: 'Home', html_content: '<p>a</p>' });
     await seedPage('about', { title: 'About', html_content: '<p>b</p>' });
+    await seedPage('empty', { title: 'Empty' });
 
     const res = await callRoute(
       import('../../pages/api/v1/sites/[siteId]/pages/batch-write'),
@@ -673,7 +712,7 @@ describe('POST /api/v1/sites/{siteId}/pages/batch-write', () => {
           { page_id: 'home', patch: { html_content: '<p>new home</p>' }, save: true },
           { page_id: 'about', patch: { html_content: '<p>new about</p>' }, save: true },
           { page_id: 'nope', patch: { html_content: '<p>x</p>' } },
-          { page_id: 'home', patch: {} },          // no writable fields
+          { page_id: 'empty', patch: {} },          // no writable fields
         ],
       },
     );
@@ -682,7 +721,7 @@ describe('POST /api/v1/sites/{siteId}/pages/batch-write', () => {
     expect(body.results.find((r) => r.page_id === 'home' && r.ok)?.ok).toBe(true);
     expect(body.results.find((r) => r.page_id === 'about' && r.ok)?.ok).toBe(true);
     expect(body.results.find((r) => r.page_id === 'nope')?.error).toContain('not found');
-    expect(body.results.find((r) => r.page_id === 'home' && !r.ok)?.error).toContain('no writable fields');
+    expect(body.results.find((r) => r.page_id === 'empty' && !r.ok)?.error).toContain('no writable fields');
 
     const { vstore } = await import('../../lib/version-store');
     const home = await vstore.page(ORG, SITE, MAIN_VERSION_ID, 'home');

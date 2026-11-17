@@ -311,7 +311,57 @@ reading the data back.
 Write meta descriptions for all pages.
 ```
 
-The AI agent uses `batch_update_pages` automatically for multi-page operations.
+Use small batches (for example 20–50 Pages) for long sweeps. The server runs at
+most four writes concurrently, keeps result order and reports failures per Page.
+A duplicate `page_id` is rejected before any write; combine changes to that Page
+into one patch. Retry only failed entries, after resolving validation/conflict errors.
+
+For an image URL and alt-text change, send only `patch.fields`; do not read and
+resend the entire block tree. Fields are merged, so omitted fields stay unchanged.
+A pure field patch validates the fields and their authority without revalidating
+an unchanged body/template. `save: true` still commits any earlier working copy:
+review or discard unrelated draft changes first. Saving does not build the site.
+
+```json
+[
+  {
+    "page_id": "example",
+    "patch": {
+      "fields": {
+        "featured_image": "<stable media URL>",
+        "featured_image_alt": "New description"
+      }
+    },
+    "save": true
+  }
+]
+```
+
+If the same file should change everywhere, use the library-wide
+[`replace_media`](../media/#replace-a-file-everywhere) operation instead of a
+Page-by-Page sweep. Page-specific alt text remains an editorial field change.
+
+### Diagnose a slow read or save
+
+Authenticated single-Page GET/PATCH/PUT and batch-read/batch-write responses
+include `Server-Timing` and `X-Typeroll-Timing-Id` headers. Inspect them in your
+HTTP client or browser's Network panel. Compare the same small PATCH and
+single-ID batch-read, using the same connection and version.
+
+`total` measures server handling from middleware entry through response creation.
+The other measurements cover schema checks, authentication, Page reads, content
+validation, working-copy writes, revision creation, committing and response
+serialization. Cloudflare storage RPCs also report counts and cumulative waiting
+time per operation. `store_busy` measures overlapping storage calls only once.
+Individual steps can be nested or parallel: **do not add their durations together**.
+Optional background revision pruning and detached audit/key-use writes are excluded.
+
+Server handling excludes DNS, TLS, client upload/download and time before the
+request reaches middleware. Measure client elapsed time as well. A slow server
+request (at least one second) records a `page_api_timing` log with the same timing
+ID, per-step count/total/maximum, storage calls and transaction conflicts, without
+Page content, IDs, URLs or credentials. Self-hosted local storage still reports
+application phases; remote storage RPC timings apply to the Cloudflare store.
 
 For block-based Pages, update `blocks`. Read the saved tree first, preserve existing
 block IDs, and give new blocks unique IDs, including blocks nested in `children`

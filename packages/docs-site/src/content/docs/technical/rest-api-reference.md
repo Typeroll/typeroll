@@ -1941,6 +1941,20 @@ Restore an archived site so it accepts writes and publishing again, the same act
 
 ## Site: Media
 
+### `replace_media`
+
+`POST /api/v1/sites/{siteId}/media/{media_id}/replace`
+
+Permission: `admin`
+
+Use another uploaded library file wherever a media item is referenced, without saving each Page. Site administrator only; site-wide across all versions. Defaults to dry_run:true. Preview and the next normal publication resolve the replacement; existing live files and Page-specific alt text stay unchanged. Does not publish, copy bytes, or delete either file. Pass replacement_media_id:null to undo. Replacement chains are checked for cycles and missing/unready files.
+
+| Parameter | In | Type | Required | Description |
+| --- | --- | --- | --- | --- |
+| `media_id` | path | string | yes |  |
+| `replacement_media_id` | body | string \| null | yes |  |
+| `dry_run` | body | boolean | no |  |
+
 ### `get_import_readiness`
 
 `GET /api/v1/sites/{siteId}/media/import`

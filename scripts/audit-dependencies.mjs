@@ -1,15 +1,39 @@
 #!/usr/bin/env node
 
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
-export const APPROVED_ADVISORIES = new Map([]);
+// Owner-approved continuation of the unchanged production dependency graph.
+// This accepts existing risk; it does not claim the vulnerable code is unreachable.
+export const APPROVED_ADVISORIES = new Map([[
+  'https://github.com/advisories/GHSA-fc5q-39xc-vjpf',
+  { expires: '2026-12-01', package: 'picomatch', allowHighSeverity: true,
+    lockFingerprint: 'd81815b3c75465cc8bcc2f252ef2f180752d515d169332e5971e09f72466fa0e',
+    rationale: 'Approved 2026-11-17: unchanged production dependencies and no new glob input paths; review or upgrade by December 1. See docs/security-advisory-exceptions.md.' },
+]]);
+
+/** Ignore only local release versions, never dependency versions or integrity. */
+export function dependencyFingerprint(lock) {
+  const normalized = structuredClone(lock);
+  delete normalized.version;
+  for (const [name, pkg] of Object.entries(normalized.packages ?? {})) {
+    if (name === '' || /^packages\/[^/]+$/.test(name)) delete pkg.version;
+  }
+  return createHash('sha256').update(JSON.stringify(normalized)).digest('hex');
+}
 
 const BLOCKING_SEVERITIES = new Set(['high', 'critical']);
 
-function approvalFor(advisory, now, approvals) {
+function approvalFor(advisory, now, approvals, severity, fingerprint) {
   const approval = approvals.get(advisory.url);
   if (!approval) return { approved: false, reason: `unapproved advisory ${advisory.url ?? advisory.source ?? 'unknown'}` };
+
+  if (BLOCKING_SEVERITIES.has(severity) && (severity !== 'high' || !approval.allowHighSeverity || approval.package !== advisory.name || !approval.lockFingerprint))
+    return { approved: false, reason: `${severity} severity is not explicitly approved for this dependency` };
+  if (approval.lockFingerprint && approval.lockFingerprint !== fingerprint)
+    return { approved: false, reason: 'approved production dependency graph changed; review the exception again' };
 
   const expiresAt = new Date(`${approval.expires}T00:00:00Z`);
   if (Number.isNaN(expiresAt.valueOf())) return { approved: false, reason: `invalid approval expiry ${approval.expires}` };
@@ -21,47 +45,32 @@ function approvalFor(advisory, now, approvals) {
 export function evaluateAudit(audit, options = {}) {
   const now = options.now ?? new Date();
   const approvals = options.approvals ?? APPROVED_ADVISORIES;
+  const fingerprint = dependencyFingerprint(options.lock ?? JSON.parse(readFileSync(new URL('../package-lock.json', import.meta.url), 'utf8')));
   const vulnerabilities = audit?.vulnerabilities ?? {};
-  const memo = new Map();
-  const visiting = new Set();
-
   function evaluatePackage(name) {
-    if (memo.has(name)) return memo.get(name);
-    if (visiting.has(name)) return { approved: false, reasons: [`cyclic vulnerability chain at ${name}`], advisories: [] };
-
-    const vulnerability = vulnerabilities[name];
-    if (!vulnerability) return { approved: false, reasons: [`missing vulnerability detail for ${name}`], advisories: [] };
-    if (BLOCKING_SEVERITIES.has(vulnerability.severity)) {
-      const result = { approved: false, reasons: [`${name} has ${vulnerability.severity} severity`], advisories: [] };
-      memo.set(name, result);
-      return result;
-    }
-
-    visiting.add(name);
+    // npm audit can contain peer-dependency cycles (vitest/coverage). Inspect
+    // every reachable concrete advisory once per root; a cycle is not itself
+    // an advisory, and a cycle without any explained leaf still fails closed.
+    const visited = new Set();
     const reasons = [];
     const advisories = [];
-    for (const via of vulnerability.via ?? []) {
-      if (typeof via === 'string') {
-        const dependency = evaluatePackage(via);
-        reasons.push(...dependency.reasons);
-        advisories.push(...dependency.advisories);
-        continue;
+    function visit(current) {
+      if (visited.has(current)) return;
+      visited.add(current);
+      const vulnerability = vulnerabilities[current];
+      if (!vulnerability) { reasons.push(`missing vulnerability detail for ${current}`); return; }
+      if (vulnerability.severity === 'critical') reasons.push(`${current} has critical severity`);
+      if ((vulnerability.via ?? []).length === 0) reasons.push(`${current}: vulnerability has no advisory chain`);
+      for (const via of vulnerability.via ?? []) {
+        if (typeof via === 'string') { visit(via); continue; }
+        const result = approvalFor(via, now, approvals, via.severity ?? vulnerability.severity, fingerprint);
+        if (!result.approved) reasons.push(`${current}: ${result.reason}`);
+        else advisories.push(via.url);
       }
-
-      const result = approvalFor(via, now, approvals);
-      if (!result.approved) reasons.push(`${name}: ${result.reason}`);
-      else advisories.push(via.url);
     }
-    if ((vulnerability.via ?? []).length === 0) reasons.push(`${name}: vulnerability has no advisory chain`);
-
-    visiting.delete(name);
-    const result = {
-      approved: reasons.length === 0,
-      reasons: [...new Set(reasons)],
-      advisories: [...new Set(advisories)],
-    };
-    memo.set(name, result);
-    return result;
+    visit(name);
+    if (!advisories.length && !reasons.length) reasons.push(`unresolved vulnerability cycle at ${name}`);
+    return { approved: reasons.length === 0, reasons: [...new Set(reasons)], advisories: [...new Set(advisories)] };
   }
 
   const failures = [];

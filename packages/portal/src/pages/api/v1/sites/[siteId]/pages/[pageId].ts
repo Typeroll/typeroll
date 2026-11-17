@@ -18,6 +18,7 @@ import { pageAddress } from '../../../../../../lib/page-fields';
 // saved content.
 
 import type { APIRoute } from 'astro';
+import { measureRequestStep } from '../../../../../../lib/runtime/request-timing';
 import { apiError, apiResponse, requireApiKey } from '../../../../../../lib/api-auth';
 import { noWritableFieldsError } from '../../../../../../lib/api-body';
 import { apiStructureLockRefusal } from '../../../../../../lib/structure-lock';
@@ -88,7 +89,7 @@ async function draftView(
   ctx: { orgId: string; siteId: string; versionId: string },
   pageId: string,
 ): Promise<{ page: Page; hasUnsaved: boolean } | null> {
-  const page = await vstore.page(ctx.orgId, ctx.siteId, ctx.versionId, pageId);
+  const page = await measureRequestStep('read_page', () => vstore.page(ctx.orgId, ctx.siteId, ctx.versionId, pageId));
   if (!page) return null;
   const wc = await readWorkingCopy(ctx, { kind: 'page', id: pageId });
   return { page: overlayWorkingCopy(page, wc), hasUnsaved: !!wc };
@@ -100,7 +101,7 @@ export const GET: APIRoute = async ({ request, params }) => {
   const ctx = guard.value;
   const pageId = params.pageId;
   if (!pageId) return apiError('Missing pageId');
-  const view = await draftView(ctx, pageId);
+  const view = await measureRequestStep('readback', () => draftView(ctx, pageId));
   if (!view) return apiError('Not found', 404);
   return apiResponse(ctx, { page: { ...project(view.page, view.hasUnsaved), url: await pageAddress(ctx, view.page) } });
 };
@@ -120,7 +121,7 @@ async function handleWrite(
     fields,
     { save, updatedBy: `api-key:${ctx.keyPrefix}`, ...authority, answerSources: answerSources as Record<string, { source_url?: string; import_run_id?: string }> | undefined },
   );
-  const view = await draftView(ctx, pageId);
+  const view = await measureRequestStep('readback', () => draftView(ctx, pageId));
   return {
     page: view ? { ...project(view.page, view.hasUnsaved), url: await pageAddress(ctx, view.page) } : null,
     saved: result.committed,
@@ -162,9 +163,9 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   const ctx = guard.value;
   const pageId = params.pageId;
   if (!pageId) return apiError('Missing pageId');
-  const existing = await vstore.page(ctx.orgId, ctx.siteId, ctx.versionId, pageId);
+  const existing = await measureRequestStep('read_page', () => vstore.page(ctx.orgId, ctx.siteId, ctx.versionId, pageId));
   if (!existing) return apiError('Not found', 404);
-  const body = (await request.json().catch(() => null)) as (Partial<Page> & { save?: boolean; answer_sources?: unknown }) | null;
+  const body = (await measureRequestStep('request_body', () => request.json().catch(() => null))) as (Partial<Page> & { save?: boolean; answer_sources?: unknown }) | null;
   if (!body || typeof body !== 'object' || Array.isArray(body)) return apiError('Invalid JSON body');
   if (body.fields !== undefined && (body.fields === null || typeof body.fields !== 'object' || Array.isArray(body.fields))) return apiError('fields must be an object');
   const blockError = blockTreeInputError(body.blocks);
@@ -190,7 +191,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     // Reported, not rejected: the write is otherwise fine and the caller has
     // already spent the round trip. It has to travel in the body, because a
     // caller driving the API cannot read our logs.
-    const mismatch = contentModeMismatch((await vstore.page(ctx.orgId, ctx.siteId, ctx.versionId, pageId))?.content_mode, body, `/api/v1/sites/${ctx.siteId}/pages/${pageId}/mode`);
+    const mismatch = contentModeMismatch((payload.page as Page | null)?.content_mode, body, `/api/v1/sites/${ctx.siteId}/pages/${pageId}/mode`);
     const warnings: unknown[] = [...await treeWriteWarnings(ctx, body.blocks), ...(mismatch ? [mismatch] : []), ...await anchorWarnings(ctx, existing, before, payload)];
     const cssWarnings = customCssWarnings(body.custom_css).map(({ line, message }) => ({ line, message }));
     return apiResponse(ctx, { ...payload, ...(warnings.length ? { warnings } : {}), ...(cssWarnings.length ? { css_warnings: cssWarnings } : {}) }, 200, body);
@@ -206,9 +207,9 @@ export const PUT: APIRoute = async ({ request, params }) => {
   const ctx = guard.value;
   const pageId = params.pageId;
   if (!pageId) return apiError('Missing pageId');
-  const existing = await vstore.page(ctx.orgId, ctx.siteId, ctx.versionId, pageId);
+  const existing = await measureRequestStep('read_page', () => vstore.page(ctx.orgId, ctx.siteId, ctx.versionId, pageId));
   if (!existing) return apiError('Not found', 404);
-  const body = (await request.json().catch(() => null)) as (Partial<Page> & { save?: boolean; answer_sources?: unknown }) | null;
+  const body = (await measureRequestStep('request_body', () => request.json().catch(() => null))) as (Partial<Page> & { save?: boolean; answer_sources?: unknown }) | null;
   if (!body || typeof body !== 'object' || Array.isArray(body)) return apiError('Invalid JSON body');
   if (body.fields !== undefined && (body.fields === null || typeof body.fields !== 'object' || Array.isArray(body.fields))) return apiError('fields must be an object');
   const blockError = blockTreeInputError(body.blocks);
@@ -237,7 +238,7 @@ export const PUT: APIRoute = async ({ request, params }) => {
     // Reported, not rejected: the write is otherwise fine and the caller has
     // already spent the round trip. It has to travel in the body, because a
     // caller driving the API cannot read our logs.
-    const mismatch = contentModeMismatch((await vstore.page(ctx.orgId, ctx.siteId, ctx.versionId, pageId))?.content_mode, body, `/api/v1/sites/${ctx.siteId}/pages/${pageId}/mode`);
+    const mismatch = contentModeMismatch((payload.page as Page | null)?.content_mode, body, `/api/v1/sites/${ctx.siteId}/pages/${pageId}/mode`);
     const warnings: unknown[] = [...await treeWriteWarnings(ctx, body.blocks), ...(mismatch ? [mismatch] : []), ...await anchorWarnings(ctx, existing, before, payload)];
     const cssWarnings = customCssWarnings(body.custom_css).map(({ line, message }) => ({ line, message }));
     return apiResponse(ctx, { ...payload, ...(warnings.length ? { warnings } : {}), ...(cssWarnings.length ? { css_warnings: cssWarnings } : {}) }, 200, body);
@@ -255,7 +256,7 @@ export const DELETE: APIRoute = async ({ request, params }) => {
   if (locked) return locked;
   const pageId = params.pageId;
   if (!pageId) return apiError('Missing pageId');
-  const existing = await vstore.page(ctx.orgId, ctx.siteId, ctx.versionId, pageId);
+  const existing = await measureRequestStep('read_page', () => vstore.page(ctx.orgId, ctx.siteId, ctx.versionId, pageId));
   if (!existing) return apiError('Not found', 404);
   await vstore.deletePage(ctx.orgId, ctx.siteId, ctx.versionId, pageId);
   await discardWorkingCopy(ctx, { kind: 'page', id: pageId });

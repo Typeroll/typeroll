@@ -12,6 +12,7 @@ import { validateAnswerSources } from '../../../../../../lib/answer-source-input
 // rest.
 
 import type { APIRoute } from 'astro';
+import { measureRequestStep } from '../../../../../../lib/runtime/request-timing';
 import { apiError, apiResponse, requireApiKey } from '../../../../../../lib/api-auth';
 import { vstore } from '../../../../../../lib/version-store';
 import { applyContentWrite } from '../../../../../../lib/content-write';
@@ -24,6 +25,20 @@ import { headingAnchorWarnings, pageDraftBody } from '../../../../../../lib/head
 import { blockTreeInputError } from '../../../../../../lib/block-tree-input';
 
 const BATCH_MAX = 200;
+const WRITE_CONCURRENCY = 4;
+
+/** Bound datastore pressure without serializing unrelated pages. */
+async function mapWrites<T>(items: unknown[], write: (item: unknown) => Promise<T>): Promise<T[]> {
+  const results = new Array<T>(items.length);
+  let next = 0;
+  await Promise.all(Array.from({ length: Math.min(WRITE_CONCURRENCY, items.length) }, async () => {
+    while (next < items.length) {
+      const index = next++;
+      results[index] = await write(items[index]);
+    }
+  }));
+  return results;
+}
 
 const WRITABLE: Array<keyof Page> = [
   'title', 'slug', 'html_content', 'status', 'content_mode', 'kind', 'author',
@@ -58,14 +73,16 @@ export const POST: APIRoute = async ({ request, params }) => {
   // Read the site's block types once for the whole batch, and only if a patch carries blocks.
   let siteRegistry: Promise<Map<string, BlockType>> | undefined;
   const registry = () => (siteRegistry ??= siteBlockRegistry(ctx));
-  const body = (await request.json().catch(() => null)) as unknown;
+  const body = (await measureRequestStep('request_body', () => request.json().catch(() => null))) as unknown;
   if (!Array.isArray(body)) {
     return apiError('Body must be an array of { page_id, patch }');
   }
   if (body.length > BATCH_MAX) return apiError(`Too many entries (max ${BATCH_MAX})`);
 
-  const results = await Promise.all(
-    body.map(async (raw): Promise<{ page_id: string; ok: boolean; saved?: boolean; staged?: string[]; applied_immediately?: string[]; error?: string; code?: string; details?: Record<string, unknown>; warnings?: Array<BlockTreeWarning | HeadingAnchorChangedWarning> }> => {
+  const ids = body.flatMap(raw => raw && typeof raw === 'object' && typeof raw.page_id === 'string' ? [raw.page_id] : []);
+  if (new Set(ids).size !== ids.length) return apiError('Each page_id may occur only once per batch');
+
+  const results = await mapWrites(body, async (raw): Promise<{ page_id: string; ok: boolean; saved?: boolean; staged?: string[]; applied_immediately?: string[]; error?: string; code?: string; details?: Record<string, unknown>; warnings?: Array<BlockTreeWarning | HeadingAnchorChangedWarning> }> => {
       if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { page_id: '', ok: false, error: 'Each entry must be an object' };
       const item = raw as Item;
       const pageId = typeof item.page_id === 'string' ? item.page_id : '';
@@ -75,9 +92,11 @@ export const POST: APIRoute = async ({ request, params }) => {
         const authority = apiWriteAuthority(item);
         if ('error' in authority) return { page_id: pageId, ok: false, error: authority.error };
         if (item.patch && typeof item.patch === 'object' && 'answer_sources' in item.patch) return { page_id: pageId, ok: false, error: 'Set answer_sources on the batch entry, beside patch' };
-        const existing = await vstore.page(ctx.orgId, ctx.siteId, ctx.versionId, pageId);
+        const existing = await measureRequestStep('read_page', () => vstore.page(ctx.orgId, ctx.siteId, ctx.versionId, pageId));
         if (!existing) return { page_id: pageId, ok: false, error: 'not found' };
-        const rawPatch = (item.patch ?? {}) as Partial<Page>;
+        if (!item.patch || typeof item.patch !== 'object' || Array.isArray(item.patch)) return { page_id: pageId, ok: false, error: 'patch must be an object' };
+        if (item.save !== undefined && typeof item.save !== 'boolean') return { page_id: pageId, ok: false, error: 'save must be boolean' };
+        const rawPatch = item.patch as Partial<Page>;
         const blockError = blockTreeInputError(rawPatch.blocks);
         if (blockError) return { page_id: pageId, ok: false, error: blockError };
         if (rawPatch.content_mode !== undefined) {
@@ -104,21 +123,20 @@ export const POST: APIRoute = async ({ request, params }) => {
         );
         // Per entry, beside its own result: a sweep of 200 pages must say
         // which page carried the inert key, not that one of them did.
-        const warnings: Array<BlockTreeWarning | HeadingAnchorChangedWarning> = await treeWriteWarnings(ctx, (item.patch as { blocks?: unknown } | undefined)?.blocks, await registry());
-        const fresh = before ? await vstore.page(ctx.orgId, ctx.siteId, ctx.versionId, pageId) : null;
+        const warnings: Array<BlockTreeWarning | HeadingAnchorChangedWarning> = rawPatch.blocks === undefined ? [] : await treeWriteWarnings(ctx, rawPatch.blocks, await registry());
+        const fresh = before ? await measureRequestStep('read_page', () => vstore.page(ctx.orgId, ctx.siteId, ctx.versionId, pageId)) : null;
         if (before && fresh) warnings.push(...await headingAnchorWarnings(ctx, existing, before, await pageDraftBody(ctx, pageId, fresh)));
         return { page_id: pageId, ok: true, saved: result.committed || (result.staged.length === 0 && result.applied_immediately.length > 0), staged: result.staged, applied_immediately: result.applied_immediately, ...(warnings.length ? { warnings } : {}) };
       } catch (e) {
         return { page_id: pageId, ok: false, error: e instanceof Error ? e.message : 'unknown error', ...(e instanceof WorkingCopyError && e.code ? { code: e.code } : {}), ...(e instanceof WorkingCopyError && e.details ? { details: e.details } : {}) };
       }
-    }),
-  );
+    });
 
   // body-for-audit summarises rather than dumps the full array (could be MB
   // of patches). The audit log just needs to show "10 pages touched".
   const summary = {
     count: body.length,
-    page_ids_preview: body.slice(0, 5).map((b) => (b as Item).page_id),
+    page_ids_preview: body.slice(0, 5).map((b) => (b as Item | null)?.page_id),
   };
   return apiResponse(ctx, { results }, 200, summary);
 };

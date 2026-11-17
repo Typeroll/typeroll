@@ -1,3 +1,4 @@
+import { applyMediaReplacements } from '../media/replacement';
 import { findReferences, replaceReferences } from '../../../../../scripts/fixtures/static-publication/references.mjs';
 import { shareBackground } from '../../../../../scripts/fixtures/static-publication/media-recipe.mjs';
 import { paths, type Media, type Redirect } from '@typeroll/shared';
@@ -107,6 +108,9 @@ export async function publicationMediaManifest<T extends Record<string, any>>(or
   const domains = options.domains ?? storedDomains;
   const stored = new Map<string, MarkedMedia>(all.map(item => [item.id, item]));
   const fromPrevious = Boolean(previousPublication?.media_manifest);
+  // A domain-only rebuild preserves its frozen publication; normal builds resolve
+  // current library replacements before discovering references and dependencies.
+  if (!fromPrevious) content = applyMediaReplacements(content, all);
   if (previousPublication?.media_manifest) {
     all.splice(0, all.length, ...previousPublication.media_manifest.entries.map((entry: any) => ({ ...entry,
       public_path: entry.public_path.slice(previousPublication.media_manifest.media_host === organization.media_host ? prefix.length + 1 : (previousPublication.media_manifest.media_path_prefix ?? '').length),

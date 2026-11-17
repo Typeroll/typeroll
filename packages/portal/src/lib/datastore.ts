@@ -47,6 +47,41 @@ export function runReadOnly<T>(reader: SnapshotReader, work: () => Promise<T>): 
   return inReadContext(reader, work);
 }
 
+/** Reuse document reads within one logical write, never across requests.
+ * Mutations and CAS checks still execute on the real store. In particular,
+ * cached expected values cannot make a stale conditional write succeed.
+ */
+export function withWriteReadCache<T>(work: () => Promise<T>): Promise<T> {
+  const store = getStore();
+  const reads = new Map<string, Promise<unknown>>();
+  const proxy = new Proxy(store, { get(target, key) {
+    if (key === 'getDoc') return async (path: string) => {
+      let pending = reads.get(path);
+      if (!pending) {
+        pending = target.getDoc(path);
+        reads.set(path, pending);
+        pending.catch(() => { if (reads.get(path) === pending) reads.delete(path); });
+      }
+      return structuredClone(await pending);
+    };
+    const fn = Reflect.get(target, key);
+    if (typeof fn !== 'function') return fn;
+    if (['listDocs', 'listTree', 'readSnapshot'].includes(String(key))) return fn.bind(target);
+    return async (...args: any[]) => {
+      const invalidate = () => {
+        if (key === 'compareAndReplaceDoc') { reads.clear(); return; }
+        const path = args[0];
+        if (typeof path !== 'string') { reads.clear(); return; }
+        for (const cachedPath of reads.keys()) if (cachedPath === path || cachedPath.startsWith(`${path}/`)) reads.delete(cachedPath);
+      };
+      invalidate();
+      try { return await fn.apply(target, args); }
+      finally { invalidate(); }
+    };
+  } });
+  return readContext.run(proxy, work);
+}
+
 export interface ReadWriteStore {
   /** Coherent content reads; writes remain outside the snapshot. */
   readSnapshot?<T>(root: string, work: () => Promise<T>): Promise<T>;

@@ -189,3 +189,19 @@ original and hide an undersized derivative. Do not compensate with custom CSS
 or `sizes` alone. Existing static sites need republication for the versioned v2
 recipe; unchanged subsequent builds reuse verified media. Explicit API variant
 workflows must regenerate their variant metadata before rebuilding.
+
+
+## Replace an existing image efficiently
+
+For one Page, use `update_page` with only the changed `fields` and `save:true`
+after approval; do not echo an unchanged block tree. For many Pages use
+`batch_update_pages` in batches of 20–50, one entry per Page. Inspect every result
+and retry only failed entries. Review any earlier unsaved draft before saving.
+
+When the same library file should change everywhere, prefer `replace_media`:
+upload the new file, run `dry_run:true`, review the site-wide/all-version scope,
+then apply `dry_run:false`. It changes the library relationship without saving
+each Page. Page-specific alt text and crop settings remain unchanged; review them.
+Preview before normal publication. Do not delete either original as part of the
+replacement. Clearing `replacement_media_id` restores the original for future
+previews/publications; existing live output changes only after publication.

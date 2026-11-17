@@ -16,6 +16,7 @@ import { drainObjectOutbox, sweepScheduledObjects } from './lib/scheduling/sweep
 import { createOperatorApi, type OperatorApiMethods } from './lib/operator-api';
 import { setSiteHostingRuntime, type SiteHostingMethods } from './lib/publishing/site-hosting';
 import { setLoopbackDispatch } from './lib/runtime/loopback';
+import { withBackgroundTasks } from './lib/runtime/background-tasks';
 
 setRuntimeStore(() => cloudflareStore(env as unknown as StoreEnv));
 // Sites in the `hosted` mode exist only on a deployment that binds a hosting service.
@@ -95,7 +96,7 @@ export class DocumentStore extends DurableObject<PortalEnv> {
 export class Scheduler extends WorkerEntrypoint<PortalEnv> {
   deliver(delivery: ScheduledDelivery) { return deliverScheduledWork(delivery); }
   drainOutbox(object: string) { return drainObjectOutbox(object); }
-  fetch(request: Request) { return handle(request, this.env as never, this.ctx as never); }
+  fetch(request: Request) { return withBackgroundTasks(task => this.ctx.waitUntil(task), () => handle(request, this.env as never, this.ctx as never)); }
 }
 
 /**
@@ -125,7 +126,7 @@ export class OperatorApi extends WorkerEntrypoint<PortalEnv> implements Operator
 }
 
 export default {
-  fetch: handle,
+  fetch: (request, workerEnv, ctx) => withBackgroundTasks(task => ctx.waitUntil(task), () => handle(request, workerEnv as never, ctx as never)),
   /** Safety net every 5 minutes: wake objects whose alarm is overdue. */
   async scheduled(_controller, workerEnv, ctx) {
     ctx.waitUntil(sweepScheduledObjects(object => (storeObject(workerEnv as unknown as StoreEnv, object) as unknown as { wake(): Promise<unknown> }).wake()));
