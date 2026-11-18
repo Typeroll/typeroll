@@ -1230,7 +1230,12 @@ a terminal status instead of cancelling a build whose `completed` count still
 rises. `read_organization_build_engine` lists the same split for each active job.
 When the site's background image preparation has stopped, a publication says so
 in `job.warnings` and `job.media_preparation` (state, `error_code`, error), since
-it then prepares the remaining images itself and takes longer.
+it then prepares the remaining images itself and takes longer. Background
+preparation retries transient failures at most three times, then stops and
+requires **Retry preparation**. Its status retains the final cause and failed
+build identity; it does not keep consuming build slots indefinitely. This limit
+is separate from per-transfer retries within a build. Successful prepared
+variants remain reusable after a retry.
 
 `get_preview_link` returns `url`, the review address. Give people `url`: its
 wrapper keeps Extension state and navigation, and extension-host integration

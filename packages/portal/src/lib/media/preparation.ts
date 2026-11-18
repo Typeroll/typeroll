@@ -23,10 +23,11 @@ const settled = (file: Media) => !!file.preparation && ['ready', 'unreadable'].i
   file.preparation.source_sha256 === file.sha256 && file.preparation.recipe === MEDIA_RECIPE_VERSION;
 const UNREADABLE_LIMIT = 50;
 /**
- * A round stopped by a passing condition starts again by itself, never ending
- * the job: first after 5 minutes, then doubling up to an hour so a broken engine
- * does not spend the customer's build minutes in a tight loop.
+ * Passing failures receive a bounded retry budget, with increasing delays.
+ * Exhausting it requires an explicit retry; a broken provider cannot spend
+ * customer build minutes indefinitely.
  */
+export const PREPARATION_MAX_RETRIES = 3;
 export const PREPARATION_RETRY_DELAY_MS = 5 * 60_000;
 export const PREPARATION_RETRY_MAX_DELAY_MS = 60 * 60_000;
 export const preparationRetryDelay = (retries: number) => Math.min(PREPARATION_RETRY_DELAY_MS * 2 ** Math.min(retries, 10), PREPARATION_RETRY_MAX_DELAY_MS);
@@ -205,14 +206,14 @@ export async function runPendingMediaPreparation(org?: string): Promise<boolean>
     } catch (caught) {
       const round = (caught as { round?: { error: unknown; task: BuildTask | null } }).round;
       const failure = preparationFailure(round ? round.error : caught, round?.task ?? null);
-      const retry = failure.transient;
+      const retry = failure.transient && (item.retries ?? 0) < PREPARATION_MAX_RETRIES;
       console.error(`[media-preparation] round stopped org=${item.org} site=${item.site} code=${failure.code} task=${item.task ?? '-'} retry=${retry}`);
       // The next round enqueues a new step; the abandoned one must not stay queued
       // and take a runner (or a place in the provider's queue) that no round reads.
       if (item.task) await new OrganizationBuildQueue(store).cancelQueued(item.org, item.task).catch(() => {});
       await store.compareAndUpdateDoc<Preparation>(path, value => value.lease === lease, retry
         ? { task: null, state: 'queued', next_at: Date.now() + preparationRetryDelay(item.retries ?? 0), retries: (item.retries ?? 0) + 1, error: null, error_code: failure.code }
-        : { state: 'failed', error: `${STOPPED} Cause: ${failure.message}${failure.message.includes(`(${failure.code})`) ? '' : ` (${failure.code})`}`, error_code: failure.code, failed_task: item.task ?? null });
+        : { state: 'failed', error: `${STOPPED}${failure.transient ? ` Automatic retries stopped after ${PREPARATION_MAX_RETRIES} retries.` : ''} Cause: ${failure.message}${failure.message.includes(`(${failure.code})`) ? '' : ` (${failure.code})`}`, error_code: failure.code, failed_task: item.task ?? null });
       pending ||= retry;
     } finally {
       clearInterval(heartbeat);
