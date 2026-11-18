@@ -1,3 +1,4 @@
+import { withPreviewReadCache } from './datastore';
 import { measureRequestStep } from './runtime/request-timing';
 // Server-side preview renderer.
 //
@@ -169,7 +170,7 @@ interface PreviewContent {
 }
 
 export function renderPreview(orgId: string, siteId: string, pageId: string, versionId: string, opts: PreviewOptions = {}, content?: PreviewContent): Promise<string | null> {
-  return measureRequestStep('preview_render', () => renderPreviewDocument(orgId, siteId, pageId, versionId, opts, content));
+  return withPreviewReadCache(() => measureRequestStep('preview_render', () => renderPreviewDocument(orgId, siteId, pageId, versionId, opts, content)));
 }
 
 async function renderPreviewDocument(
@@ -583,7 +584,11 @@ export async function renderBlockTypePreview(
  * clicks links inside the preview and lands on the matching draft/page in
  * the same surface.
  */
-export async function renderPreviewBySlug(
+export function renderPreviewBySlug(...args: Parameters<typeof renderPreviewBySlugUncached>): ReturnType<typeof renderPreviewBySlugUncached> {
+  return withPreviewReadCache(() => renderPreviewBySlugUncached(...args));
+}
+
+async function renderPreviewBySlugUncached(
   orgId: string,
   siteId: string,
   slugParts: string[],

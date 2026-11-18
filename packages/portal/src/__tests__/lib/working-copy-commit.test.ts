@@ -349,3 +349,22 @@ it('saves and clears responsive footer settings through the public API', async (
   expect((await patch(null)).status).toBe(200);
   expect((await vstore.settings(ORG, SITE, MAIN_VERSION_ID))?.footer_spacing).toBeUndefined();
 });
+
+it('never discards a newer draft or writes a revision when atomic Save loses its guard', async () => {
+  await setup(); await seedPage('race');
+  const { getStore } = await import('../../lib/datastore');
+  const { mergeWorkingCopy, commitWorkingCopy, readWorkingCopy } = await import('../../lib/working-copy');
+  const store = getStore(), target = { kind: 'page' as const, id: 'race' };
+  await mergeWorkingCopy(CTX, target, { title: 'First edit' }, 'test');
+  const original = store.compareAndReplaceDoc.bind(store);
+  const spy = vi.spyOn(store, 'compareAndReplaceDoc').mockImplementationOnce(async (...args) => {
+    await mergeWorkingCopy(CTX, target, { title: 'Newer edit' }, 'other');
+    return original(...args);
+  });
+  try {
+    await expect(commitWorkingCopy(CTX, target, 'test')).rejects.toThrow('changed');
+    expect((await getPage('race'))?.title).toBe('race');
+    expect((await readWorkingCopy(CTX, target))?.fields.title).toBe('Newer edit');
+    expect(await store.listDocs(paths.revisions(ORG, SITE, 'race', MAIN_VERSION_ID))).toEqual([]);
+  } finally { spy.mockRestore(); }
+});

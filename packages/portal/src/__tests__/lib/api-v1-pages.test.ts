@@ -83,9 +83,11 @@ it('returns phase timings for an authenticated saved field patch and a batch rea
     { timing: true, headers: bearer(token), body: { fields: { featured_image_alt: 'After' }, save: true } });
   expect(saved.status).toBe(200);
   expect(await saved.json()).toMatchObject({ saved: true, page: { fields: { featured_image_alt: 'After' } } });
-  for (const phase of ['authentication', 'read_page', 'content_validation', 'draft_write', 'revision', 'page_write', 'readback', 'response']) {
+  for (const phase of ['authentication', 'read_page', 'content_validation', 'draft_write', 'page_write', 'readback', 'response']) {
     expect(saved.headers.get('server-timing')).toContain(`${phase};dur=`);
   }
+  // Revision and Page are one atomic operation now, not separate RPC phases.
+  expect(saved.headers.get('server-timing')).not.toContain('revision;dur=');
   const read = await callRoute(import('../../pages/api/v1/sites/[siteId]/pages/batch-read'), 'POST',
     `https://portal.test/api/v1/sites/${SITE}/pages/batch-read`, { siteId: SITE },
     { timing: true, headers: bearer(token), body: { page_ids: ['example'] } });

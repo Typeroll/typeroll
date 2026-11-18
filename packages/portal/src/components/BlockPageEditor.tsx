@@ -1,3 +1,5 @@
+import { usePreviewRefresh } from './hooks/usePreviewRefresh';
+import { changesVisualPreview } from '../lib/editor-preview-refresh';
 import { TemplateDesignFindings, type TemplateDesignFindingView } from './TemplateDesignFindings';
 import { decodeHTML } from 'entities';
 import PageDraftRecovery from './PageDraftRecovery';
@@ -202,7 +204,9 @@ function BlockPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl
   // Live preview zoom, read by the canvas hit-test to map on-screen pointer
   // coords into the (unscaled) iframe coordinate space.
   const scaleRef = useRef(1);
-  function reloadPreview(): void {
+  const previewRefresh = usePreviewRefresh(refreshCanvas);
+  function reloadPreview(): void { previewRefresh.request(); }
+  function refreshCanvas(): void {
     const ifr = iframeRef.current;
     if (!ifr) return;
     restoreCanvasScrollRef.current = canvasScrollRef.current;
@@ -872,7 +876,7 @@ function BlockPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl
       setHasWc(true);
       setStatus('saved');
       window.setTimeout(() => setStatus('idle'), 1200);
-      reloadPreview();
+      if (changesVisualPreview(fields)) reloadPreview();
     } catch (e) {
       // Keep the fields pending so the next edit retries them.
       pendingMeta.current = { ...fields, ...pendingMeta.current };
@@ -883,6 +887,7 @@ function BlockPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl
   }
 
   function updateMeta<K extends keyof Page>(key: K, value: Page[K]): void {
+    if (JSON.stringify(draft[key]) === JSON.stringify(value) && !(key in pendingMeta.current)) return;
     setDraft((d) => ({ ...d, [key]: value }));
     setHasWc(true);
     pendingMeta.current[key] = value;
@@ -919,6 +924,7 @@ function BlockPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl
     setStatus('saving');
     setError(null);
     const wcUrl = workingCopyUrl;
+    previewRefresh.hold();
     try {
       await flushPendingDraft();
       const res = await fetch(wcUrl, { method: 'POST' });
@@ -940,6 +946,7 @@ function BlockPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl
       setError((e as Error).message);
       setStatus('error');
     }
+    finally { previewRefresh.release(); }
   }
 
   async function discardWc(): Promise<void> {

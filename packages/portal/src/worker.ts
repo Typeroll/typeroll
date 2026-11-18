@@ -78,6 +78,7 @@ export class DocumentStore extends DurableObject<PortalEnv> {
   get(path: string) { return this.store.get(path); }
   getMany(paths: string[]) { return this.store.getMany(paths); }
   list(collection: string, opts?: Parameters<ScheduledDocumentStore['list']>[1]) { return this.store.list(collection, opts); }
+  listVersioned(collection: string, opts?: Parameters<ScheduledDocumentStore['list']>[1], known?: string) { return this.store.listVersioned(collection, opts, known); }
   commit(preconditions: Parameters<ScheduledDocumentStore['commit']>[0], writes: Parameters<ScheduledDocumentStore['commit']>[1]) { return this.store.commit(preconditions, writes); }
   deleteTree(path: string) { return this.store.deleteTree(path); }
   sequence() { return this.store.sequence(); }

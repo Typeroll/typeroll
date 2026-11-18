@@ -44,13 +44,22 @@ it('saves a structured image field without work proportional to the page body', 
   // Previous implementation: 50 transport calls, including repeated template
   // reads and redirect scans. This is a network-round-trip budget, not a
   // wall-clock assertion on a machine running unrelated tests.
-  expect(saveCalls.length).toBeLessThanOrEqual(18);
+  expect(saveCalls.length).toBeLessThanOrEqual(12);
   expect(saveCalls.some(call => call.path.includes('/page_templates/'))).toBe(false);
   expect(saveCalls.some(call => call.path.includes('/redirects'))).toBe(false);
   const page = await store.getDoc<Page>(pagePath);
   expect(page?.fields).toEqual({ featured_image: 'https://example.test/new.jpg', featured_image_alt: 'New' });
   expect(page?.blocks).toEqual(blocks);
   expect(saveCalls.filter(call => call.path.includes('/media'))).toEqual([]);
+
+  // Ten fields in one Save are one draft and one canonical transaction.
+  await store.updateDoc(paths.contentType(ctx.orgId, ctx.siteId, 'article', 'main'), {
+    fields: Array.from({ length: 10 }, (_, i) => ({ name: `field_${i}`, type: 'text' })),
+  });
+  calls.length = 0;
+  await applyContentWrite(ctx, { kind: 'page', id: 'example' }, { fields: Object.fromEntries(Array.from({ length: 10 }, (_, i) => [`field_${i}`, `Value ${i}`])) }, { save: true, updatedBy: 'test' });
+  expect(calls.filter(call => call.method === 'commit')).toHaveLength(2);
+  expect(calls.length).toBeLessThanOrEqual(12);
 
   // A structured field can also be part of a route: that change must still
   // create the same redirect as a slug edit, despite the fast field path.

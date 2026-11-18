@@ -30,7 +30,7 @@ import { pageContentType, routePageExcerpt, validatePageFields, validatePagePres
 import { paths, type Media, type Page, type Partial as PartialDoc, type WorkingCopy, type WorkingCopyKind } from '@typeroll/shared';
 import { getStore } from './datastore';
 import { vstore } from './version-store';
-import { snapshotRevision } from './revisions';
+import { snapshotRevision, revisionEffect, pruneRevisions } from './revisions';
 import { assertStructureChange, structureLockApplies, StructureLockedError } from './structure-lock';
 import { sanitizeBody } from './sanitize';
 import { buildMediaLookup, transformBodyForSeo, lintBodyForSeo } from './seo-transform';
@@ -433,12 +433,17 @@ export async function commitWorkingCopy(
       warnings = lintBodyForSeo(transformed);
     }
     const layout_warnings = await pageFooterSpacingWarnings(ctx, { ...existing, ...update } as Page, update, type?.template);
-    await measureRequestStep('revision', () => snapshotRevision({
+    const revision = {
       orgId: ctx.orgId, siteId: ctx.siteId, versionId: ctx.versionId,
-      kind: 'page', resourceIds: [target.id],
+      kind: 'page' as const, resourceIds: [target.id],
       doc: existing as unknown as Record<string, unknown>, createdBy,
+    };
+    const draftPath = paths.workingCopy(ctx.orgId, ctx.siteId, wcKey(target), ctx.versionId);
+    await measureRequestStep('page_write', () => vstore.writePage(ctx.orgId, ctx.siteId, ctx.versionId, target.id, update as Partial<Page>, {
+      actor: actor ?? 'portal', actorId: createdBy, expected: existing, sources: wc.answer_sources, overrideReason,
+      saveEffects: [revisionEffect(revision), { path: draftPath, data: {}, expected: wc, delete: true }],
     }));
-    await measureRequestStep('page_write', () => vstore.writePage(ctx.orgId, ctx.siteId, ctx.versionId, target.id, update as Partial<Page>, { actor: actor ?? 'portal', actorId: createdBy, expected: existing, sources: wc.answer_sources, overrideReason }));
+    await pruneRevisions(revision);
 
     let auto_redirects: CommitResult['auto_redirects'] = [];
     let retired_redirects: CommitResult['retired_redirects'] = [];
@@ -458,7 +463,6 @@ export async function commitWorkingCopy(
         }
       }
     }
-    await discardWorkingCopy(ctx, target);
     await markSiteDirty(ctx.orgId, ctx.siteId, ctx.versionId);
     return { committed: true, seo_warnings: warnings, auto_redirects, retired_redirects, ...(layout_warnings.length ? { layout_warnings } : {}) };
   }

@@ -2,6 +2,13 @@
 
 ## 0.3.40 (candidate, MCP 0.45.145)
 
+- Commit saved Pages, revision snapshots and guarded draft cleanup together;
+  the changed-field probe uses 12 storage calls / two commits instead of 18 / five.
+- Revalidate bounded preview collection caches at the storage owner on every read,
+  transferring unchanged libraries as version tokens. No HTML or auth is cached.
+- Coalesce editor preview refreshes and avoid reloading the visual canvas for
+  head-only metadata; HTML autosaves send only changed fields.
+
 - Add opt-in responsive site footer spacing using space tokens or explicit px,
   shared by static output and previews. Explicit final-block spacing wins,
   including zero; historical layouts remain unchanged until opted in.

@@ -30,6 +30,8 @@ export interface ConditionalEffect {
   expected?: Record<string, any> | null;
   replace?: boolean;
   guardOnly?: boolean;
+  /** Delete in the same guarded transaction; data is ignored. */
+  delete?: boolean;
 }
 
 type SnapshotReader = Pick<ReadWriteStore, 'getDoc' | 'listDocs'>;
@@ -82,7 +84,20 @@ export function withWriteReadCache<T>(work: () => Promise<T>): Promise<T> {
   return readContext.run(proxy, work);
 }
 
+/** Preview requests may reuse raw collections only after owner validation.
+ * Version/organization/site paths remain in the cache key; auth runs outside it. */
+export function withPreviewReadCache<T>(work: () => Promise<T>): Promise<T> {
+  const store = getStore();
+  if (!store.listDocsCached) return work();
+  return readContext.run(new Proxy(store, { get(target, key) {
+    if (key === 'listDocs') return target.listDocsCached!.bind(target);
+    const value = Reflect.get(target, key);
+    return typeof value === 'function' ? value.bind(target) : value;
+  } }), work);
+}
+
 export interface ReadWriteStore {
+  listDocsCached?<T = unknown>(collectionPath: string, opts?: { filters?: Filter[]; limit?: number; startAfterId?: string }): Promise<Array<T & { id: string }>>;
   /** Coherent content reads; writes remain outside the snapshot. */
   readSnapshot?<T>(root: string, work: () => Promise<T>): Promise<T>;
   getDoc<T = unknown>(path: string): Promise<(T & { id: string }) | null>;
@@ -331,9 +346,10 @@ class FixtureStore implements ReadWriteStore {
       const before = await Promise.all(effects.map(effect => this.getDoc(effect.path)));
       if (effects.some((effect, i) => Object.hasOwn(effect, 'expected') && !isDeepStrictEqual(before[i], effect.expected))) return false;
       const writes = [{ path: p, data, before: expected }, ...effects.map((effect, i) => ({ ...effect, path: effect.path,
-        data: effect.replace ? effect.data : { ...before[i], ...effect.data }, before: before[i] })).filter(effect => !effect.guardOnly)];
+        data: effect.delete ? null : effect.replace ? effect.data : { ...before[i], ...effect.data }, before: before[i] })).filter(effect => !effect.guardOnly)];
       for (const write of writes) {
         const { docPath } = this.resolve(write.path);
+        if (write.data === null) { await fs.promises.rm(docPath, { force: true }); continue; }
         await fs.promises.mkdir(path.dirname(docPath), { recursive: true });
         const tmpPath = `${docPath}.${process.pid}.${Date.now()}.tmp`;
         await fs.promises.writeFile(tmpPath, JSON.stringify(write.data, null, 2));

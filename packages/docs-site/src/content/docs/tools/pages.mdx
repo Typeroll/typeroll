@@ -504,3 +504,18 @@ trailing-slash policy. Otherwise routing follows the Content type and parent.
 An occupied explicit path returns a conflict; choose another slug.
 Canonical overrides and custom JSON-LD are not copied. Pass `version` to keep
 both the source read and clone creation in the selected site version.
+
+### Efficient edits and preview updates
+
+From Core 0.3.40, send multiple changed fields in one `update_page` patch with
+`save: true`. They share one save operation; fields are not saved individually.
+The revision and saved Page are committed together, and a newer concurrent draft
+causes a conflict instead of being discarded. Resolve the conflict by re-reading
+and reviewing the newer changes.
+
+The editor groups quick edits and updates its visual canvas once after Save.
+Editing search/sharing metadata alone does not continually reload the canvas;
+Save or open a standalone preview to inspect the updated metadata. HTML editing
+also sends only changed fields when autosaving. Content edits still update the
+visual preview. Preview navigation revalidates reusable collection data against
+storage on every request, so saved changes do not wait for a cache timeout.
