@@ -384,6 +384,8 @@ export interface SiteSettings {
   agent_instructions?: string;
   /** Public Extension settings follow the site version; secrets and grants remain site-wide. */
   extension_public_config?: Record<string, Record<string, unknown>>;
+  /** Opt-in shared space before the footer. Explicit final-block spacing wins. */
+  footer_spacing?: import('./footer-spacing.js').FooterSpacing;
   design_scales?: import('./design-tokens.js').DesignScales;
   typography?: import('./design-tokens.js').TypographySettings;
   site_name: string;
@@ -766,6 +768,8 @@ export interface Page {
    */
   excerpt?: string | null;
   seo_title?: string;
+  /** Deliberately omit the shared footer gap; retain the block's own padding. */
+  footer_spacing?: 'auto' | 'none';
   /** Set false to use the page SEO title verbatim, without the site suffix. */
   append_seo_suffix?: boolean;
   seo_description?: string;

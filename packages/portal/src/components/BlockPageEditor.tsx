@@ -1,3 +1,5 @@
+import { usePreviewRefresh } from './hooks/usePreviewRefresh';
+import { changesVisualPreview } from '../lib/editor-preview-refresh';
 import { TemplateDesignFindings, type TemplateDesignFindingView } from './TemplateDesignFindings';
 import { decodeHTML } from 'entities';
 import PageDraftRecovery from './PageDraftRecovery';
@@ -166,6 +168,7 @@ function BlockPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl
   const hoverIdRef = useRef<string | null>(null);
   const [status, setStatus] = useState<Status>('idle');
   const [error, setError] = useState<string | null>(null);
+  const [layoutWarnings, setLayoutWarnings] = useState<string[]>([]);
   const [activeBp, setActiveBp] = useState<Breakpoint>(DEFAULT_BP);
   useEffect(() => {
     if (window.matchMedia('(max-width: 1000px)').matches) setActiveBp('mobile');
@@ -201,7 +204,9 @@ function BlockPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl
   // Live preview zoom, read by the canvas hit-test to map on-screen pointer
   // coords into the (unscaled) iframe coordinate space.
   const scaleRef = useRef(1);
-  function reloadPreview(): void {
+  const previewRefresh = usePreviewRefresh(refreshCanvas);
+  function reloadPreview(): void { previewRefresh.request(); }
+  function refreshCanvas(): void {
     const ifr = iframeRef.current;
     if (!ifr) return;
     restoreCanvasScrollRef.current = canvasScrollRef.current;
@@ -871,7 +876,7 @@ function BlockPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl
       setHasWc(true);
       setStatus('saved');
       window.setTimeout(() => setStatus('idle'), 1200);
-      reloadPreview();
+      if (changesVisualPreview(fields)) reloadPreview();
     } catch (e) {
       // Keep the fields pending so the next edit retries them.
       pendingMeta.current = { ...fields, ...pendingMeta.current };
@@ -882,6 +887,7 @@ function BlockPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl
   }
 
   function updateMeta<K extends keyof Page>(key: K, value: Page[K]): void {
+    if (JSON.stringify(draft[key]) === JSON.stringify(value) && !(key in pendingMeta.current)) return;
     setDraft((d) => ({ ...d, [key]: value }));
     setHasWc(true);
     pendingMeta.current[key] = value;
@@ -918,6 +924,7 @@ function BlockPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl
     setStatus('saving');
     setError(null);
     const wcUrl = workingCopyUrl;
+    previewRefresh.hold();
     try {
       await flushPendingDraft();
       const res = await fetch(wcUrl, { method: 'POST' });
@@ -925,6 +932,8 @@ function BlockPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl
         const j = await res.json().catch(() => ({})) as { error?: string };
         throw new Error(j.error ?? `Save failed (${res.status})`);
       }
+      const saved = await res.json();
+      setLayoutWarnings((saved.layout_warnings ?? []).map((warning: { message: string }) => warning.message));
       setHasWc(false);
       setDraft((d) => ({ ...d, date_updated: new Date().toISOString() }));
       setStatus('saved');
@@ -937,6 +946,7 @@ function BlockPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl
       setError((e as Error).message);
       setStatus('error');
     }
+    finally { previewRefresh.release(); }
   }
 
   async function discardWc(): Promise<void> {
@@ -1123,6 +1133,11 @@ function BlockPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl
           )}
         </div>
       </header>
+      {layoutWarnings.length > 0 && <div role="status" data-layout-warnings style={{ flexShrink: 0, padding: '.75rem 1rem', background: '#422006', color: '#fef3c7', maxHeight: '25vh', overflow: 'auto', fontSize: '.85rem' }}>
+        <strong>Saved — check page spacing</strong>
+        {layoutWarnings.map((message, i) => <p key={i} style={{ margin: '.4rem 0', overflowWrap: 'anywhere' }}>{message}</p>)}
+        <button type="button" onClick={() => setLayoutWarnings([])}>Dismiss spacing warning</button>
+      </div>}
 
       <nav className="block-editor__mobile-nav" aria-label="Editor panels">
         {(['blocks', 'preview', 'fields'] as const).map((pane) => (
@@ -1755,6 +1770,10 @@ function MetaPanel({
         </div>
       )}
 
+      <label style={{ display: 'flex', gap: '.5rem', color: '#d4d4d8', marginBottom: '1rem' }}>
+        <input type="checkbox" checked={draft.footer_spacing === 'none'} onChange={e => onChange('footer_spacing', e.target.checked ? 'none' : 'auto')} />
+        Meet the footer edge to edge
+      </label>
       <div style={fieldGroup}>
         <label htmlFor="block-seo-title" style={fieldLabel}>SEO title</label>
         <input id="block-seo-title"

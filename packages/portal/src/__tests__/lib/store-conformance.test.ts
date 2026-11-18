@@ -63,6 +63,19 @@ for (const backend of backends) describe(`store contract: ${backend.name}`, () =
     expect(await store.compareAndReplaceDoc('jobs/j', job, { state: 'c' })).toBe(false);
   });
 
+  it('guards deletion effects together with the saved document and revision', async () => {
+    await store.setDoc('pages/p', { title: 'Old' });
+    await store.setDoc('drafts/p', { title: 'New' });
+    const page = await store.getDoc('pages/p'), draft = await store.getDoc('drafts/p');
+    const effects = [{ path: 'drafts/p', data: {}, expected: draft, delete: true }, { path: 'revisions/r', data: { title: 'Old' }, expected: null, replace: true }];
+    expect(await store.compareAndReplaceDoc('pages/p', page, { title: 'New' }, effects)).toBe(true);
+    expect(await store.getDoc('drafts/p')).toBeNull();
+    expect(await store.getDoc('revisions/r')).toMatchObject({ title: 'Old' });
+    await store.setDoc('drafts/p', { title: 'Newest' });
+    expect(await store.compareAndReplaceDoc('pages/p', await store.getDoc('pages/p'), { title: 'Lost' }, effects)).toBe(false);
+    expect(await store.getDoc('drafts/p')).toMatchObject({ title: 'Newest' });
+  });
+
   it('lists a collection in id order with paging and limits, never a subcollection', async () => {
     for (const id of ['c', 'a', 'b']) await store.setDoc(`items/${id}`, { n: id.charCodeAt(0) });
     await store.setDoc('items/a/children/x', { n: 1 });

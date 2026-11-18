@@ -1,3 +1,5 @@
+import { usePreviewRefresh } from './hooks/usePreviewRefresh';
+import { changesVisualPreview, changedEditorFields } from '../lib/editor-preview-refresh';
 import PageDraftRecovery from './PageDraftRecovery';
 import CustomCssEditor from './CustomCssEditor';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -79,7 +81,9 @@ function HtmlPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl,
       channel: 'typeroll.editor-canvas', version: 1, canvas_id: canvasId, ...command,
     }, '*');
   };
-  function reloadPreview(): void {
+  const previewRefresh = usePreviewRefresh(refreshCanvas);
+  function reloadPreview(): void { previewRefresh.request(); }
+  function refreshCanvas(): void {
     const ifr = iframeRef.current;
     if (!ifr) return;
     restoreCanvasScrollRef.current = canvasScrollRef.current;
@@ -88,6 +92,7 @@ function HtmlPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl,
     setCanvasRevision((value) => value + 1);
   }
   const [copied, setCopied] = useState(false);
+  const [layoutWarnings, setLayoutWarnings] = useState<string[]>([]);
   const [seoWarnings, setSeoWarnings] = useState<string[]>([]);
 
   // The previewUrl passed in is a portal-relative path. For sharing, give
@@ -164,10 +169,12 @@ function HtmlPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl,
       setStatus('saving');
       setError(null);
       try {
+        const fields = changedEditorFields(contentFields(draft), contentFields(JSON.parse(lastSaved.current)));
+        if (!Object.keys(fields).length) { setStatus('saved'); return; }
         const res = await fetch(`/api/sites/${siteId}/working-copy/page/${page.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ fields: contentFields(draft) }),
+          body: JSON.stringify({ fields }),
         });
         const responseData = await res.json().catch(() => ({}));
         if (!res.ok) {
@@ -176,7 +183,7 @@ function HtmlPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl,
         lastSaved.current = JSON.stringify(draft);
         setHasWc(true);
         setStatus('saved');
-        reloadPreview();
+        if (changesVisualPreview(fields)) reloadPreview();
         window.setTimeout(() => setStatus('idle'), 1500);
       } catch (e) {
         setStatus('error');
@@ -191,16 +198,18 @@ function HtmlPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl,
   async function saveAll() {
     if (saveTimer.current) window.clearTimeout(saveTimer.current);
     return enqueueWrite(async () => {
+      previewRefresh.hold();
       setStatus('saving');
       setError(null);
       try {
         const wcUrl = `/api/sites/${siteId}/working-copy/page/${page.id}`;
-        const flush = await fetch(wcUrl, {
+        const fields = changedEditorFields(contentFields(draft), contentFields(JSON.parse(lastSaved.current)));
+        const flush = Object.keys(fields).length ? await fetch(wcUrl, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ fields: contentFields(draft) }),
-        });
-        if (!flush.ok) {
+          body: JSON.stringify({ fields }),
+        }) : null;
+        if (flush && !flush.ok) {
           const j = await flush.json().catch(() => ({})) as { error?: string };
           throw new Error(j.error ?? `Save failed (${flush.status})`);
         }
@@ -218,6 +227,7 @@ function HtmlPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl,
           lastSaved.current = JSON.stringify(updated);
           return updated;
         });
+        setLayoutWarnings((responseData.layout_warnings ?? []).map((warning: { message: string }) => warning.message));
         setSeoWarnings(Array.isArray(responseData.seo_warnings) ? responseData.seo_warnings : []);
         setStatus('saved');
         reloadPreview();
@@ -225,7 +235,7 @@ function HtmlPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl,
       } catch (e) {
         setStatus('error');
         setError(e instanceof Error ? e.message : 'Save failed');
-      }
+      } finally { previewRefresh.release(); }
     });
   }
 
@@ -357,6 +367,7 @@ function HtmlPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl,
 
           {activeTab === 'content' && (
             <div className="stack">
+              {layoutWarnings.length > 0 && <div role="status">{layoutWarnings.map((message, i) => <p key={i}>{message}</p>)}</div>}
               {seoWarnings.length > 0 && (
                 <div className="editor__seo-warn">
                   <strong>SEO heads-up</strong>
@@ -575,6 +586,7 @@ function HtmlPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl,
               />
               <label>Page order<input type="number" step="any" value={draft.sort_order ?? ''} onChange={e => update('sort_order', e.target.value === '' ? null : Number(e.target.value))} /></label>
               <p className="muted text-sm">Lower numbers come first when sorting by page order. Empty values come last.</p>
+              <label><input type="checkbox" checked={draft.footer_spacing === 'none'} onChange={e => update('footer_spacing', e.target.checked ? 'none' : 'auto')} /> Meet the footer edge to edge</label>
               <TemplatePicker
                 siteId={siteId}
                 pageId={page.id}

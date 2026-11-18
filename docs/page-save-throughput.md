@@ -1,7 +1,7 @@
 # Page save throughput
 
-Status: PR #229 candidate Core 0.3.38 / MCP 0.45.144, 2026-11-17. Not released or
-verified on production. Customer report: a saved field-only PATCH took 20–30 s;
+Historical investigation: PR #229, Core 0.3.38 / MCP 0.45.144, 2026-11-17.
+The follow-up candidate and its local-only status are recorded at the end. Customer report: a saved field-only PATCH took 20–30 s;
 a single-ID batch read took 2–3 s. No customer Page was changed in this investigation.
 
 ## Evidence and scope
@@ -121,3 +121,50 @@ The owner subsequently approved an exception for the unchanged production risk.
 The comparison, exact lock binding and December 1 expiry are recorded in
 [security advisory exceptions](security-advisory-exceptions.md). Qualification
 must still pass with that explicit exception before any release.
+
+## Follow-up candidate: atomic Save and validated preview collections
+
+Core 0.3.40 candidate (local only). The preceding sections are historical
+measurements, not the release status of this follow-up.
+
+- The same changed-field fixture now uses **12 transport calls: 7 get, 2 getMany,
+  1 list and 2 commit**, versus 18/5 commits in 0.3.38. Ten fields in one saved
+  patch use the same budget. This still excludes authentication and response work.
+- The first transaction stages the draft. The second guards the Page, its schema,
+  version dependencies and the exact draft, then saves the Page, pre-edit revision,
+  provenance and draft deletion together. A newer draft causes a conflict without
+  a partial Page write or orphan revision. Absent tombstones are only guarded;
+  no standalone deletion commit is needed. Revision retention stays off the
+  Workers response path. Address changes still run redirect hygiene.
+- Preview collection reads may reuse raw data in the same store instance, bounded
+  to 32 collections per store, 16 MiB / 64 entries across the isolate, and 8 MiB per entry. Each read asks the
+  owning object for its current epoch/sequence. Unchanged replies contain only
+  the token; any write/delete/expiry or object restart requires fresh collection
+  bytes. Paths and query options separate sites, versions and filters. No rendered
+  HTML, user authorization or ticket validity is cached. Cold or oversized
+  collections still take the original full-read path. Node fixtures without the
+  optional transport method retain ordinary reads.
+- This avoids transferring/parsing unchanged libraries, not all per-click RPCs.
+  An object-wide sequence deliberately invalidates more broadly than necessary.
+  Page/template edits, changes in inherited versions and deletes remain visible.
+- Editor refreshes coalesce for 120 ms and pause while Save flushes the draft and
+  commits. Head-only metadata does not reload the visual canvas until explicit
+  Save; standalone previews always render current saved metadata. HTML editor
+  autosaves send changed fields instead of resending the body for a metadata edit.
+
+Local throughput numbers are not production latency promises. Repeat authenticated
+browser measurements after the separately approved staging/production rollout.
+
+The real preview-route fixture with 50 Pages transfers 513,160 bytes for the
+first Page-library read and 51 bytes on the next click with unchanged content.
+A subsequent Page edit is immediately visible, and a deleted route disappears.
+This measures that collection response, not the entire HTTP page or browser load.
+
+Verification: the complete source test suites passed (4,921 Portal, 376 MCP and
+3,668 shared tests, plus infrastructure/static smoke checks). Typechecks,
+security audit, frozen-template compatibility checks, builds and docs artifacts
+passed. Eleven distinct Chromium journeys cover draft recovery/navigation and
+both editors' efficient saves. The final expiry-watermark change was rechecked
+with 55 store/cache/scheduler tests and a rebuilt portal. Expired records keep
+no individual deletion tombstone; a single expiry watermark invalidates caches
+and concurrent snapshots. These are local results, not production measurements.

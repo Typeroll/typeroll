@@ -1,3 +1,4 @@
+import { BREAKPOINT_ORDER, footerSpacingError } from '@typeroll/shared';
 import type { APIRoute } from 'astro';
 import { isDesignSettingsSection, isSiteSettingsSection, scopedSettings } from '../../../../lib/site-settings-sections';
 import { vstore } from '../../../../lib/version-store';
@@ -91,6 +92,9 @@ export const POST: APIRoute = async ({ request, cookies, params, redirect, local
   const agentInstructions = form.has('agent_instructions') ? String(form.get('agent_instructions') || '') : existing.agent_instructions;
   if (includesSection('access') && agentInstructions && agentInstructions.length > 12000) return new Response('Agent instructions must be at most 12000 characters.', { status: 400 });
   // Empty fields keep the default width; a site stores only the widths it changes.
+  const footerEntries = BREAKPOINT_ORDER.flatMap(bp => { const value = String(form.get(`footer_spacing.${bp}`) ?? '').trim(); return value ? [[bp, /^\d+(?:\.\d+)?$/.test(value) ? Number(value) : value]] : []; });
+  const footer_spacing = footerEntries.length ? Object.fromEntries(footerEntries) as SiteSettings['footer_spacing'] : undefined;
+  if (includesSection('design') && footer_spacing !== undefined) { const error = footerSpacingError(footer_spacing); if (error) return new Response(error, { status: 400 }); }
   const contentWidthEntries = (['narrow', 'normal', 'wide'] as const).flatMap(key => {
     const value = String(form.get(`content_widths.${key}`) ?? '').trim();
     return value ? [[key, Number(value)] as const] : [];
@@ -134,6 +138,7 @@ export const POST: APIRoute = async ({ request, cookies, params, redirect, local
     // Never empty: an empty or unknown value keeps the zone the site has (or the usual one for its language).
     time_zone: (() => { const value = String(form.get('time_zone') ?? '').trim(); return value && !timeZoneError(value) ? value : siteTimeZone({ time_zone: existing.time_zone, language: form.get('language') ?? existing.language }); })(),
     content_widths,
+    footer_spacing,
     // full is the default and is stored as an absent value.
     motion: form.get('motion') === 'reduced' ? 'reduced' : undefined,
     sitewide_noindex: form.get('sitewide_noindex') === 'on',

@@ -207,3 +207,48 @@ Run `lint_design_tokens`. Its findings, including `css_findings` for custom CSS
 that works against the theme, should be fixed or recorded as deliberate
 exceptions. The [launch readiness report](../launch-checklist/#custom-css-overrides)
 shows the same CSS findings for the whole site.
+
+## Space before the footer
+
+Available from **Core 0.3.40 / MCP 0.45.145** in both Cloud and self-hosted
+Typeroll, after the portal has been upgraded. Rebuild to change a static site.
+
+In **Site settings → Design → Space before the footer**, choose a spacing
+step for mobile and, optionally, wider breakpoints. For example:
+
+```json
+{
+  "footer_spacing": { "mobile": "lg", "laptop": "xl" }
+}
+```
+
+`update_site_settings` takes this at the top level. Steps use
+`design_scales.space`, so changing the scale changes all these page endings.
+Numbers are explicit pixels (0–320). Missing widths inherit mobile-first; if
+only a wider width is supplied, it also supplies the mobile baseline. The map
+replaces the previous map. `null` clears the setting and preserves the site's
+historical block-owned spacing. Existing sites are not opted in automatically.
+
+The gap applies after the last visible rendered block, including a page
+composed with a Page template or reusable global blocks. Default bottom padding
+on a final Section, Container or Hero is replaced by this shared gap, rather
+than added a second time. An explicitly authored bottom/vertical padding,
+spacing-after override or selected style keeps its value, **including zero**.
+Custom CSS that sets spacing keeps control of its block; the platform does not guess its
+computed spacing. HTML-mode pages use the shared gap on the content well.
+
+For a coloured ending that should meet the footer, select **Meet the footer
+edge to edge** in Page metadata (HTML editor: Settings). This stores
+`Page.footer_spacing: "none"`. It removes the shared outside gap without
+removing the section's own inside padding. Uncheck it, or set `"auto"`, to use
+the site default again. This is an intentional design choice, not a warning.
+
+When a layout save ends with known text or a form inside a block with explicit
+zero bottom spacing, the editor shows **Saved — check page spacing**. API and
+MCP saves return `layout_warnings` with `code: "footer_spacing_zero"`, the
+`block_id` and affected breakpoints. Saving still succeeds. Clear the block's
+bottom spacing to inherit the site default, add spacing, or deliberately opt
+out on the Page. The warning follows the Page template, including its content
+type's default. It is a conservative authored-data check, not a measurement of
+arbitrary HTML/CSS or dynamic embeds. Pure field edits keep their fast save
+path and do not re-run this layout check.

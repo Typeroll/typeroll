@@ -65,7 +65,8 @@ export async function pageAddress(ctx: { orgId: string; siteId: string; versionI
 }
 
 /** Reused at creation, draft writes, commit and structural type changes. */
-export async function validatePagePresentation(ctx: { orgId: string; siteId: string; versionId: string }, type: ContentType, input: { breadcrumb_label?: unknown; excerpt?: unknown; noindex?: unknown; nofollow?: unknown; template?: unknown; sort_order?: unknown; blocks?: Page['blocks']; content_mode?: string; html_content?: string }): Promise<string | null> {
+export async function validatePagePresentation(ctx: { orgId: string; siteId: string; versionId: string }, type: ContentType, input: { footer_spacing?: unknown; breadcrumb_label?: unknown; excerpt?: unknown; noindex?: unknown; nofollow?: unknown; template?: unknown; sort_order?: unknown; blocks?: Page['blocks']; content_mode?: string; html_content?: string }): Promise<string | null> {
+  if (input.footer_spacing != null && (typeof input.footer_spacing !== 'string' || !['auto', 'none'].includes(input.footer_spacing))) return 'footer_spacing must be auto or none';
   if (input.breadcrumb_label != null && (typeof input.breadcrumb_label !== 'string' || input.breadcrumb_label.length > 200)) return 'breadcrumb_label must be text up to 200 characters, or null';
   if (input.excerpt != null && (typeof input.excerpt !== 'string' || input.excerpt.length > PAGE_EXCERPT_MAX_LENGTH)) return `excerpt must be plain text up to ${PAGE_EXCERPT_MAX_LENGTH} characters, or null`;
   for (const key of ['noindex', 'nofollow'] as const) if (input[key] != null && typeof input[key] !== 'boolean') return `${key} must be boolean`;

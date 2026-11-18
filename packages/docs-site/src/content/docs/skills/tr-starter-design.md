@@ -157,3 +157,15 @@ Compare 375, 768 and 1280px in Site settings → Design and in a full site previ
 After a rendering upgrade/rebuild, recheck cards, boxed headings, leading text
 and webfonts. Boxes should get their outer air from padding. Keep exceptions
 in decisions.md, and run lint_design_tokens before launch.
+
+
+## Shared page endings
+
+From Core 0.3.40 / MCP 0.45.145, prefer site `footer_spacing`, for example
+`{"mobile":"lg","laptop":"xl"}`, over copying bottom padding into every Page.
+Inspect the final block and Page template first: explicit bottom/vertical
+padding, spacing-after and selected style spacing win, including zero. Remove
+that override when the page should inherit. For an intentional full-bleed
+ending, set the Page's `footer_spacing` to `none` and record the decision.
+Check `layout_warnings` after Save; `footer_spacing_zero` identifies an explicit
+zero next to text/form content. Verify mobile and desktop before publishing.

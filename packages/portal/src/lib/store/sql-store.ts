@@ -16,6 +16,7 @@ export interface StoreTransport {
   get(path: string): Promise<StoredDoc | null>;
   getMany(paths: string[]): Promise<Array<StoredDoc | null>>;
   list(collection: string, opts?: { filters?: Filter[]; limit?: number; startAfterId?: string }): Promise<StoredDoc[]>;
+  listVersioned?(collection: string, opts: Parameters<StoreTransport['list']>[1], known?: string): Promise<{ token: string; docs?: StoredDoc[] }>;
   commit(preconditions: Precondition[], writes: Write[]): Promise<CommitResult>;
   deleteTree(path: string): Promise<number>;
   sequence(): Promise<number>;
@@ -35,7 +36,41 @@ class ConflictError extends Error {
   constructor(path: string) { super(`Too many concurrent updates to ${path}; retry this operation`); this.name = 'StoreConflictError'; }
 }
 
+// Shared across store instances in one Worker isolate, not 16 MiB per Site.
+const previewListBudget = new Map<object, { bytes: number; evict: () => void }>();
+let previewListBytes = 0;
+function forgetPreviewEntry(entry: object | undefined) {
+  if (!entry) return;
+  const retained = previewListBudget.get(entry);
+  if (retained) { previewListBytes -= retained.bytes; previewListBudget.delete(entry); retained.evict(); }
+}
+
 export class SqlStore implements ReadWriteStore {
+  private readonly previewLists = new Map<string, { token: string; docs: StoredDoc[]; bytes: number }>();
+  /** Bounded per-store cache of raw collections, not HTML or authorization.
+   * Every hit is validated by the storage owner, never a time-based stale hit. */
+  async listDocsCached<T = unknown>(collection: string, opts?: Parameters<StoreTransport['list']>[1]): Promise<Array<T & { id: string }>> {
+    if (!this.transport.listVersioned) return this.listDocs<T>(collection, opts);
+    const key = JSON.stringify([collection, opts ?? null]);
+    const previous = this.previewLists.get(key);
+    const response = await this.transport.listVersioned(collection, opts, previous?.token);
+    const docs = response.docs ?? previous?.docs;
+    if (!docs) throw new Error('Collection validation omitted its initial data');
+    if (response.docs) {
+      const bytes = JSON.stringify(response.docs).length * 2;
+      forgetPreviewEntry(this.previewLists.get(key));
+      if (bytes <= 8 * 1024 * 1024) {
+        while (this.previewLists.size >= 32) forgetPreviewEntry(this.previewLists.values().next().value);
+        while (previewListBudget.size && (previewListBudget.size >= 64 || previewListBytes + bytes > 16 * 1024 * 1024)) forgetPreviewEntry(previewListBudget.keys().next().value);
+        const entry = { token: response.token, docs: structuredClone(docs), bytes };
+        this.previewLists.set(key, entry);
+        previewListBytes += bytes;
+        previewListBudget.set(entry, { bytes, evict: () => { if (this.previewLists.get(key) === entry) this.previewLists.delete(key); } });
+      }
+    }
+    return structuredClone(docs.map(asValue)) as Array<T & { id: string }>;
+  }
+
   constructor(private readonly transport: StoreTransport, private readonly newId: () => string) {}
 
   /** Index writes for the scheduled-work outbox, committed with their source. */
@@ -113,7 +148,8 @@ export class SqlStore implements ReadWriteStore {
 
   async deleteDoc(path: string): Promise<void> {
     await this.optimistic([path], ([before]) => {
-      const { writes, index } = this.indexFor(path, before?.data ?? null, null);
+      if (!before) return { result: undefined };
+      const { writes, index } = this.indexFor(path, before.data, null);
       return { writes: [{ path, op: 'delete' }, ...writes], index, result: undefined };
     });
   }
@@ -160,6 +196,10 @@ export class SqlStore implements ReadWriteStore {
       for (const effect of effects) {
         if (effect.guardOnly) continue;
         const before = byPath.get(effect.path)?.data ?? null;
+        if (effect.delete) {
+          if (before) { writes.push({ path: effect.path, op: 'delete' }); index.push(...this.indexFor(effect.path, before, null).index); }
+          continue;
+        }
         const result = effect.replace ? clean(effect.data) : deepMerge(before ?? {}, clean(effect.data));
         writes.push({ path: effect.path, op: 'set', data: result });
         index.push(...this.indexFor(effect.path, before, result).index);
@@ -205,6 +245,7 @@ export function localTransport(engine: import('./sql-engine').SqlDocumentEngine)
     get: async path => engine.get(path),
     getMany: async paths => engine.getMany(paths),
     list: async (collection, opts) => engine.list(collection, opts),
+    listVersioned: async (collection, opts, known) => engine.listVersioned(collection, opts, known),
     commit: async (preconditions, writes) => engine.commit(preconditions, writes),
     deleteTree: async path => engine.deleteTree(path),
     sequence: async () => engine.sequence(),

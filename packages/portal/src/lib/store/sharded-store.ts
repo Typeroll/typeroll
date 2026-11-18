@@ -205,6 +205,12 @@ export class ShardedStore implements ReadWriteStore {
     return (await this.storeFor(root)).listTree(root, opts);
   }
 
+  async listDocsCached<T = unknown>(collection: string, opts?: { filters?: Filter[]; limit?: number; startAfterId?: string }): Promise<Array<T & { id: string }>> {
+    // Preview caches only version-owned content, never membership, API keys or owner indexes.
+    if (!/^organizations\/[^/]+\/sites\/[^/]+\/versions\/[^/]+\//.test(collection)) return this.listDocs<T>(collection, opts);
+    return (await this.storeFor(collection)).listDocsCached<T>(collection, opts);
+  }
+
   async listDocs<T = unknown>(collection: string, opts?: { filters?: Filter[]; limit?: number; startAfterId?: string }): Promise<Array<T & { id: string }>> {
     if (COUNTER_COLLECTION.test(collection)) throw new Error(`${collection} is spread over counter objects and cannot be listed`);
     // Organizations are listed from their copies in the global object.
@@ -227,6 +233,7 @@ export class ShardedStore implements ReadWriteStore {
       const local: ConditionalEffect[] = [], remote: OutboxEntry['writes'] = [];
       for (const effect of [{ path, data, replace: true } as ConditionalEffect, ...effects]) {
         const shard = await this.shardName(effect.path);
+        if (effect.delete && (shard !== source || isMirrored(effect.path))) throw new Error('Transactional deletion must stay on the source shard without mirrors');
         if (shard !== source) {
           if (effect.guardOnly || Object.hasOwn(effect, 'expected') || !effect.replace) throw new Error(`A condition on ${effect.path} cannot be atomic with ${path}; only unconditional replacements may cross objects`);
           remote.push({ shard, path: effect.path, data: stripId(effect.data) });

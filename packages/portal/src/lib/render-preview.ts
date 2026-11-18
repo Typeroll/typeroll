@@ -1,3 +1,4 @@
+import { withPreviewReadCache } from './datastore';
 import { measureRequestStep } from './runtime/request-timing';
 // Server-side preview renderer.
 //
@@ -25,7 +26,7 @@ import type {
 import { vstore } from './version-store';
 import { siteSnippets } from './publishing/publication-snippets';
 import {
-  contentWellCss, siteThemeCss, platformLayer, usesCascadeLayers, PLATFORM_LAYER_ORDER_CSS, webfontFallbackCss, withGlobalBlockContent,
+  footerSpacingCss, contentWellCss, siteThemeCss, platformLayer, usesCascadeLayers, PLATFORM_LAYER_ORDER_CSS, webfontFallbackCss, withGlobalBlockContent,
   pageRobots,
   breadcrumbJsonLd,
   applyTrailingSlash,
@@ -169,7 +170,7 @@ interface PreviewContent {
 }
 
 export function renderPreview(orgId: string, siteId: string, pageId: string, versionId: string, opts: PreviewOptions = {}, content?: PreviewContent): Promise<string | null> {
-  return measureRequestStep('preview_render', () => renderPreviewDocument(orgId, siteId, pageId, versionId, opts, content));
+  return withPreviewReadCache(() => measureRequestStep('preview_render', () => renderPreviewDocument(orgId, siteId, pageId, versionId, opts, content)));
 }
 
 async function renderPreviewDocument(
@@ -583,7 +584,11 @@ export async function renderBlockTypePreview(
  * clicks links inside the preview and lands on the matching draft/page in
  * the same surface.
  */
-export async function renderPreviewBySlug(
+export function renderPreviewBySlug(...args: Parameters<typeof renderPreviewBySlugUncached>): ReturnType<typeof renderPreviewBySlugUncached> {
+  return withPreviewReadCache(() => renderPreviewBySlugUncached(...args));
+}
+
+async function renderPreviewBySlugUncached(
   orgId: string,
   siteId: string,
   slugParts: string[],
@@ -714,6 +719,7 @@ ${blockCss ? `<style data-blocks="1">${blockCss}</style>` : ''}
 ${hideExtensionPlaceholders ? `<style data-tr-extension-mounts="1">${EXTENSION_PLACEHOLDER_HIDDEN_CSS}</style>` : ''}
 ${direction === 'rtl' ? `<style data-direction>${directionCss(direction, renderVersion)}</style>` : ''}
 ${siteStyles ? `<style data-site-styles="1">${platformLayer('styles', siteStyles, renderVersion)}</style>` : ''}
+${footerSpacingCss(settings, page) ? `<style data-footer-spacing>${footerSpacingCss(settings, page)}</style>` : ''}
 ${settings.custom_css ? `<style data-site-css="1">${styleElementText(settings.custom_css)}</style>` : ''}
 ${page.custom_css ? `<style data-page-css="1">${styleElementText(page.custom_css)}</style>` : ''}
 ${layered ? '' : `<style data-site-base-css="1">${SITE_BASE_CSS}</style>`}

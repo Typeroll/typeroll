@@ -1,3 +1,4 @@
+import { pageFooterSpacingWarnings } from '../../../../../lib/footer-spacing-warnings';
 import { customCssWriteError } from '../../../../../lib/custom-css-write';
 import { pageAddress, pageContentType, validatePagePresentation } from '../../../../../lib/page-fields';
 import type { APIRoute } from 'astro';
@@ -33,7 +34,7 @@ const ALLOWED_FIELDS: Array<keyof Page> = [
   'seo_description',
   'og_title', 'og_description', 'og_image',
   'seo_image_alt',
-  'canonical_url',
+  'canonical_url', 'footer_spacing',
   'noindex', 'nofollow',
   'lastmod_override',
   'json_ld',
@@ -116,6 +117,7 @@ export const PUT: APIRoute = async ({ request, cookies, params, locals }) => {
     update.html_content = transformed;
     warnings = lintBodyForSeo(transformed);
   }
+  const layout_warnings = await pageFooterSpacingWarnings(lockCtx, { ...existing, ...update } as Page, update, type?.template);
   await snapshotRevision({
     orgId: owner_org_id,
     siteId: site.id,
@@ -137,7 +139,7 @@ export const PUT: APIRoute = async ({ request, cookies, params, locals }) => {
       if (url) await retireRedirectsShadowingUrl(owner_org_id, site.id, versionId, url);
     }
   }
-  return json({ ok: true, seo_warnings: warnings });
+  return json({ ok: true, seo_warnings: warnings, ...(layout_warnings.length ? { layout_warnings } : {}) });
 };
 
 export const GET: APIRoute = async ({ cookies, params, locals }) => {

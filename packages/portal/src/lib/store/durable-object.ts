@@ -27,6 +27,7 @@ export interface DocumentStoreRpc {
   get(path: string): StoredDoc | null;
   getMany(paths: string[]): Array<StoredDoc | null>;
   list(collection: string, opts?: { filters?: Filter[]; limit?: number; startAfterId?: string }): StoredDoc[];
+  listVersioned(collection: string, opts: Parameters<DocumentStoreRpc['list']>[1], known?: string): ReturnType<SqlDocumentEngine['listVersioned']>;
   commit(preconditions: Precondition[], writes: Write[]): CommitResult;
   deleteTree(path: string): number;
   sequence(): number;
@@ -48,6 +49,7 @@ export function documentStoreMethods(storage: DurableSqlStorage): DocumentStoreR
     get: path => engine.get(path),
     getMany: paths => engine.getMany(paths),
     list: (collection, opts) => engine.list(collection, opts),
+    listVersioned: (collection, opts, known) => engine.listVersioned(collection, opts, known),
     commit: (preconditions, writes) => engine.commit(preconditions, writes),
     deleteTree: path => engine.deleteTree(path),
     sequence: () => engine.sequence(),
@@ -65,6 +67,7 @@ export function durableObjectTransport(stub: { [K in keyof DocumentStoreRpc]: (.
     get: async path => stub.get(path),
     getMany: async paths => stub.getMany(paths),
     list: async (collection, opts) => stub.list(collection, opts),
+    listVersioned: async (collection, opts, known) => stub.listVersioned(collection, opts, known),
     commit: async (preconditions, writes) => stub.commit(preconditions, writes),
     deleteTree: async path => stub.deleteTree(path),
     sequence: async () => stub.sequence(),

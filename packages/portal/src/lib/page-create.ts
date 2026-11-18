@@ -1,3 +1,5 @@
+import { pageFooterSpacingWarnings } from './footer-spacing-warnings';
+import type { FooterSpacingWarning } from '@typeroll/shared';
 import { customCssWriteError } from './custom-css-write';
 import { paths, slugify, escapeHtml, pageAuthorityFields, ensureBlockIds, contentPagePath, DEFAULT_CONTENT_TYPE, type ContentType, type Page, type Media } from '@typeroll/shared';
 import { getStore } from './datastore';
@@ -14,7 +16,7 @@ import { isLivePageStatus, retireRedirectsShadowingUrl } from './redirect-hygien
 import { markSiteDirty } from './auto-deploy';
 
 const CREATE_FIELDS = ['path', 'parent', 'sort_order', 'template', 'kind', 'author', 'language',
-  'breadcrumb_label', 'excerpt', 'seo_title', 'seo_description', 'og_title', 'og_description', 'og_image', 'seo_image_alt', 'canonical_url', 'append_seo_suffix',
+  'breadcrumb_label', 'excerpt', 'seo_title', 'seo_description', 'og_title', 'og_description', 'og_image', 'seo_image_alt', 'canonical_url', 'append_seo_suffix', 'footer_spacing',
   'noindex', 'nofollow', 'alternates', 'lastmod_override', 'json_ld', 'schema_type', 'service', 'image_sizes_default',
   'custom_css', 'date_published', 'publish_at', 'unpublish_at'] as const;
 
@@ -33,6 +35,7 @@ export interface SlugAdjustedWarning {
 }
 
 export interface CreatePageResult {
+  layout_warnings?: FooterSpacingWarning[];
   page: Page;
   retired_redirects: Array<{ from_path: string; to_path: string }>;
   warnings?: SlugAdjustedWarning[];
@@ -167,9 +170,10 @@ export async function createPage(ctx: WcCtx, input: Partial<Page>, actor: WriteA
   }
   const headingError = await validatePagePresentation(ctx, type, page);
   if (headingError) throw new WorkingCopyError(headingError, 400);
+  const layout_warnings = await pageFooterSpacingWarnings(ctx, page, input as Record<string, unknown>, type.template);
   const created = await getStore().createDocIfMissing(paths.page(ctx.orgId, ctx.siteId, page.id, ctx.versionId), { ...page, _provenance: authority.provenance });
   if (!created) throw new WorkingCopyError('A page with this address was just created. Reload and try again.', 409);
   const retired = url && isLivePageStatus(page.status) ? await retireRedirectsShadowingUrl(ctx.orgId, ctx.siteId, ctx.versionId, url) : [];
   await markSiteDirty(ctx.orgId, ctx.siteId, ctx.versionId);
-  return { page, retired_redirects: retired.map(redirect => ({ from_path: redirect.from_path, to_path: redirect.to_path })), ...(warnings.length ? { warnings } : {}) };
+  return { page, ...(layout_warnings.length ? { layout_warnings } : {}), retired_redirects: retired.map(redirect => ({ from_path: redirect.from_path, to_path: redirect.to_path })), ...(warnings.length ? { warnings } : {}) };
 }

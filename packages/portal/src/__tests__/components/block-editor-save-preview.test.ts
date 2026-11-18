@@ -1,10 +1,7 @@
 // @vitest-environment happy-dom
-// Save in the block editor renders the saved page in the canvas. Saving
-// first flushes pending edits to the working copy, which reloads the canvas
-// while the commit is still running; that render can read the page before the
-// commit and the working copy after it. Save therefore reloads the canvas once
-// more after the commit (a fresh frame, busy until it reports ready). Every
-// request is a mocked fetch; happy-dom does not load the frame.
+// Save holds preview refreshes across the draft flush and canonical commit,
+// then coalesces them into one fresh frame. Requests are mocked; happy-dom
+// does not load the frame.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, createElement } from 'react';
@@ -57,6 +54,7 @@ describe('Save in the block editor', () => {
     await flush();
     expect(canvas()).not.toBeNull();
 
+    const beforeSave = canvas();
     // An unsaved title edit: Save flushes it to the working copy first.
     const title = document.getElementById('block-page-title') as HTMLInputElement;
     await act(async () => {
@@ -66,16 +64,18 @@ describe('Save in the block editor', () => {
     await act(async () => button('Publish').click());
     await act(async () => button('Save').click());
     await act(async () => { await commitStarted; });
-    // The flush reloaded the canvas while the commit is running.
+    // No speculative render while the commit is running.
     const duringCommit = canvas();
-    expect(duringCommit).not.toBeNull();
+    expect(duringCommit).toBe(beforeSave);
 
     await act(async () => releaseCommit!());
-    await flush();
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 150)); });
     expect(document.body.textContent).toContain('All changes saved');
     const afterSave = canvas();
     expect(afterSave).not.toBeNull();
     expect(afterSave).not.toBe(duringCommit);
     expect(afterSave!.getAttribute('aria-busy')).toBe('true');
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 150)); });
+    expect(canvas()).toBe(afterSave);
   });
 });

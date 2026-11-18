@@ -1,6 +1,6 @@
 ---
 import type { BreadcrumbItem, ContentType, ExtensionRuntimeSnapshot, Page, SiteApps, SiteSettings } from '@typeroll/shared';
-import { directionCss, languageDirection, resolveBreakpointWidths, resolveRenderVersion, siteStylesCss, styleElementText, siteThemeCss, webFontFamilies, googleFontsCssUrl, fontDelivery, SELF_HOSTED_FONTS_CSS_PATH, SELF_HOSTED_FONTS_DIRECTORY, FONT_PLAN_RENDER_VERSION, WEBFONT_FALLBACK_CSS, webfontFallbackCss, contentWellCss, platformLayer, usesCascadeLayers, PLATFORM_LAYER_ORDER_CSS, buildConsentEarlyPaintRuntime, buildExtensionRuntimeScript, EXTENSION_PLACEHOLDER_HIDDEN_CSS, renderClientCapabilityScripts, renderIntegrationTags, conversionPageConfig, CONVERSIONS_RUNTIME_JS, wrapConsentScripts, STICKY_HEADER_RUNTIME_JS, EARLY_IMAGE_LOADING_RUNTIME_JS, activeHeaderBehavior, HEADER_BEHAVIOR_CSS, HEADER_BEHAVIOR_RUNTIME_JS } from '@typeroll/shared';
+import { footerSpacingCss, directionCss, languageDirection, resolveBreakpointWidths, resolveRenderVersion, siteStylesCss, styleElementText, siteThemeCss, webFontFamilies, googleFontsCssUrl, fontDelivery, SELF_HOSTED_FONTS_CSS_PATH, SELF_HOSTED_FONTS_DIRECTORY, FONT_PLAN_RENDER_VERSION, WEBFONT_FALLBACK_CSS, webfontFallbackCss, contentWellCss, platformLayer, usesCascadeLayers, PLATFORM_LAYER_ORDER_CSS, buildConsentEarlyPaintRuntime, buildExtensionRuntimeScript, EXTENSION_PLACEHOLDER_HIDDEN_CSS, renderClientCapabilityScripts, renderIntegrationTags, conversionPageConfig, CONVERSIONS_RUNTIME_JS, wrapConsentScripts, STICKY_HEADER_RUNTIME_JS, EARLY_IMAGE_LOADING_RUNTIME_JS, activeHeaderBehavior, HEADER_BEHAVIOR_CSS, HEADER_BEHAVIOR_RUNTIME_JS } from '@typeroll/shared';
 import SEOHead from '../components/SEOHead.astro';
 import CookieConsent from '../components/CookieConsent.astro';
 // Inlined rather than imported: from render version 14 they go into cascade
@@ -232,6 +232,7 @@ const siteStyles = siteStylesCss(settings.styles, { breakpoints: resolveBreakpoi
     {(extensionMounts || Boolean(extensions?.installations?.length)) && <style data-tr-extension-mounts set:html={EXTENSION_PLACEHOLDER_HIDDEN_CSS} />}
     {direction === 'rtl' && <style data-direction set:html={directionCss(direction, renderVersion)} />}
     {siteStyles && <style data-site-styles set:html={platformLayer('styles', siteStyles, renderVersion)} />}
+    {footerSpacingCss(settings, page) && <style data-footer-spacing set:html={footerSpacingCss(settings, page)} />}
     {settings.custom_css && <style set:html={styleElementText(settings.custom_css)} />}
     {/* Page-level CSS after site CSS so a page can override the site theme. */}
     {page.custom_css && <style set:html={styleElementText(page.custom_css)} />}

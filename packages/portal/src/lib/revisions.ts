@@ -38,8 +38,7 @@ function collectionPath(args: { orgId: string; siteId: string; versionId: string
   throw new Error('Unknown revision kind');
 }
 
-export async function snapshotRevision(args: SnapshotArgs): Promise<string> {
-  const store = getStore();
+export function revisionEffect(args: SnapshotArgs) {
   const collPath = collectionPath(args);
   // Drop the id off the snapshotted doc so restoring doesn't try to re-inject
   // it as a real field — id is encoded by the doc's path on disk/Firestore.
@@ -52,7 +51,18 @@ export async function snapshotRevision(args: SnapshotArgs): Promise<string> {
     note: args.note,
     doc: body as Record<string, unknown>,
   };
-  await store.setDoc(`${collPath}/${revId}`, rev as unknown as Record<string, unknown>);
+  return { path: `${collPath}/${revId}`, data: rev as unknown as Record<string, unknown>, expected: null, replace: true };
+}
+
+export async function snapshotRevision(args: SnapshotArgs): Promise<string> {
+  const effect = revisionEffect(args);
+  await getStore().setDoc(effect.path, effect.data);
+  await pruneRevisions(args);
+  return effect.path.split('/').at(-1)!;
+}
+
+export async function pruneRevisions(args: SnapshotArgs): Promise<void> {
+  const store = getStore(), collPath = collectionPath(args);
 
   // Prune anything beyond CAP. List, sort by created_at desc, delete the tail.
   await runMaintenance(async () => {
@@ -65,7 +75,6 @@ export async function snapshotRevision(args: SnapshotArgs): Promise<string> {
       }
     }
   });
-  return revId;
 }
 
 export async function listRevisions(args: {

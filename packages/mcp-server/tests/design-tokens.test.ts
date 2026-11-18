@@ -23,3 +23,8 @@ it('accepts line_length "none" and refuses other strings or out-of-range numbers
  expect(schema.safeParse({typography:{line_length:65}}).success).toBe(true);
  for (const line_length of ['auto',30,'65']) expect(schema.safeParse({typography:{line_length}}).success).toBe(false);
 });
+it('accepts responsive shared footer spacing and rejects unknown steps and breakpoints', () => {
+ const schema=z.object(settingsTools.find(t=>t.name==='update_site_settings')!.inputSchema!);
+ expect(schema.safeParse({footer_spacing:{mobile:'lg',desktop:64}}).success).toBe(true);
+ for (const footer_spacing of ['huge',-1,{phone:'xl'}]) expect(schema.safeParse({footer_spacing}).success).toBe(false);
+});

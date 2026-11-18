@@ -1,3 +1,5 @@
+import { pageFooterSpacingWarnings } from './footer-spacing-warnings';
+import type { FooterSpacingWarning } from '@typeroll/shared';
 import { customCssWriteError } from './custom-css-write';
 import { isDeepStrictEqual } from 'node:util';
 import { ensureBlockIds, invalidFieldValuesBody, invalidSelectValues, type Block } from '@typeroll/shared';
@@ -28,7 +30,7 @@ import { pageContentType, routePageExcerpt, validatePageFields, validatePagePres
 import { paths, type Media, type Page, type Partial as PartialDoc, type WorkingCopy, type WorkingCopyKind } from '@typeroll/shared';
 import { getStore } from './datastore';
 import { vstore } from './version-store';
-import { snapshotRevision } from './revisions';
+import { snapshotRevision, revisionEffect, pruneRevisions } from './revisions';
 import { assertStructureChange, structureLockApplies, StructureLockedError } from './structure-lock';
 import { sanitizeBody } from './sanitize';
 import { buildMediaLookup, transformBodyForSeo, lintBodyForSeo } from './seo-transform';
@@ -97,7 +99,7 @@ export type WcTarget =
  */
 export const PAGE_WC_FIELDS = [
   'title', 'slug', 'path', 'parent', 'sort_order', 'template',
-  'blocks', 'html_content', 'breadcrumb_label', 'excerpt', 'seo_title', 'append_seo_suffix', 'seo_description', 'og_title', 'og_description', 'og_image',
+  'blocks', 'html_content', 'breadcrumb_label', 'excerpt', 'seo_title', 'append_seo_suffix', 'footer_spacing', 'seo_description', 'og_title', 'og_description', 'og_image',
   'seo_image_alt', 'canonical_url', 'noindex', 'nofollow', 'alternates', 'lastmod_override', 'json_ld',
   'schema_type', 'service', 'kind', 'author', 'language', 'image_sizes_default',
   'custom_css', 'fields',
@@ -180,6 +182,7 @@ export async function filterWcFields(
   }
   let allowed: Set<string>;
   if (target.kind === 'page') {
+    if (fields.footer_spacing != null && (typeof fields.footer_spacing !== 'string' || !['auto', 'none'].includes(fields.footer_spacing))) throw new WorkingCopyError('footer_spacing must be auto or none', 400);
     allowed = new Set<string>([...PAGE_WC_FIELDS, 'fields']);
     if (fields.fields !== undefined || 'breadcrumb_label' in fields || 'excerpt' in fields || 'template' in fields || 'sort_order' in fields || 'blocks' in fields || 'html_content' in fields) {
       const page = await vstore.page(ctx.orgId, ctx.siteId, ctx.versionId, target.id);
@@ -332,6 +335,7 @@ export function workingCopyDiffers(saved: object, wc: WorkingCopy | null | undef
 }
 
 export interface CommitResult {
+  layout_warnings?: FooterSpacingWarning[];
   committed: boolean;
   seo_warnings: string[];
   auto_redirects: Array<{ from_path: string; to_path: string; status_code: 301 }>;
@@ -428,12 +432,18 @@ export async function commitWorkingCopy(
       update.html_content = transformed;
       warnings = lintBodyForSeo(transformed);
     }
-    await measureRequestStep('revision', () => snapshotRevision({
+    const layout_warnings = await pageFooterSpacingWarnings(ctx, { ...existing, ...update } as Page, update, type?.template);
+    const revision = {
       orgId: ctx.orgId, siteId: ctx.siteId, versionId: ctx.versionId,
-      kind: 'page', resourceIds: [target.id],
+      kind: 'page' as const, resourceIds: [target.id],
       doc: existing as unknown as Record<string, unknown>, createdBy,
+    };
+    const draftPath = paths.workingCopy(ctx.orgId, ctx.siteId, wcKey(target), ctx.versionId);
+    await measureRequestStep('page_write', () => vstore.writePage(ctx.orgId, ctx.siteId, ctx.versionId, target.id, update as Partial<Page>, {
+      actor: actor ?? 'portal', actorId: createdBy, expected: existing, sources: wc.answer_sources, overrideReason,
+      saveEffects: [revisionEffect(revision), { path: draftPath, data: {}, expected: wc, delete: true }],
     }));
-    await measureRequestStep('page_write', () => vstore.writePage(ctx.orgId, ctx.siteId, ctx.versionId, target.id, update as Partial<Page>, { actor: actor ?? 'portal', actorId: createdBy, expected: existing, sources: wc.answer_sources, overrideReason }));
+    await pruneRevisions(revision);
 
     let auto_redirects: CommitResult['auto_redirects'] = [];
     let retired_redirects: CommitResult['retired_redirects'] = [];
@@ -453,9 +463,8 @@ export async function commitWorkingCopy(
         }
       }
     }
-    await discardWorkingCopy(ctx, target);
     await markSiteDirty(ctx.orgId, ctx.siteId, ctx.versionId);
-    return { committed: true, seo_warnings: warnings, auto_redirects, retired_redirects };
+    return { committed: true, seo_warnings: warnings, auto_redirects, retired_redirects, ...(layout_warnings.length ? { layout_warnings } : {}) };
   }
 
   if (target.kind === 'partial') {

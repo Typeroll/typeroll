@@ -16,34 +16,35 @@ Core 0.2.0 uses one Page model for all content. See [Content types](../content-t
 
 ## Page fields
 
-| Field             | Type                                                     | Description                                                                                                                                             |
-| ----------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `content_type`    | string                                                   | Content type ID; defaults to `page`.                                                                                                                    |
-| `fields`          | object                                                   | Custom values defined by the content type.                                                                                                              |
-| `path`            | string                                                   | Explicit public path, overriding the type URL pattern.                                                                                                  |
-| `title`           | string                                                   | Page title. Used in nav and as default `<title>` tag.                                                                                                   |
-| `slug`            | string                                                   | URL path. `""` = homepage. No leading slash.                                                                                                            |
-| `content_mode`    | `"blocks"` \| `"html"`                                   | `"blocks"` is the default for new pages. See [Blocks](../blocks/) for the block-mode editing surface.                                                   |
-| `html_content`    | string                                                   | Full page body HTML — used when `content_mode === "html"`.                                                                                              |
-| `blocks`          | `Block[]`                                                | Block tree — used when `content_mode === "blocks"`. Edit via `add_block`, `update_block`, `move_block`, `remove_block`, `duplicate_block`.              |
-| `template`        | string                                                   | Optional PageTemplate id. The renderer composes the template's block tree with the page's `blocks` at build time.                                       |
-| `status`          | `"published"` \| `"draft"` \| `"review"` \| `"unlisted"` | Only `published` and `unlisted` pages are built into the static site. `unlisted` pages are reachable by URL but excluded from listings and the sitemap. |
-| `publish_at`      | string                                                   | ISO 8601. Schedule the page to go live automatically at this time. Cleared once it fires.                                                               |
-| `unpublish_at`    | string                                                   | ISO 8601. Schedule the page to come down automatically.                                                                                                 |
-| `kind`            | `"page"` \| `"article"`                                  | `"article"` enables Article JSON-LD schema.                                                                                                             |
-| `seo_title`       | string                                                   | Custom `<title>` tag. Defaults to `title + suffix`.                                                                                                     |
-| `seo_description` | string                                                   | `<meta name="description">`. Describe the actual page accurately; there is no fixed length requirement.                                                 |
-| `og_title`        | string                                                   | Optional sharing title for OpenGraph/Twitter; empty uses the document title. Core 0.2.120 / MCP 0.45.90.                                                |
-| `og_description`  | string                                                   | Optional sharing description; empty uses the SEO description and its site fallbacks. Core 0.2.120 / MCP 0.45.90.                                        |
-| `seo_image_alt`   | string                                                   | Sharing-image description; empty uses the mapped public image alt when applicable.                                                                      |
-| `og_image`        | string                                                   | Absolute CDN URL for Open Graph image.                                                                                                                  |
-| `canonical_url`   | string                                                   | Override the canonical URL (e.g. after a migration).                                                                                                    |
-| `noindex`         | boolean                                                  | Set `true` to add `<meta name="robots" content="noindex">`.                                                                                             |
-| `nofollow`        | boolean                                                  | Restrict following links independently. Public noindex defaults to `noindex,follow`; explicit nofollow and private previews remain restricted.          |
-| `language`        | string                                                   | Per-page language override (e.g. `"en"`, `"sv"`).                                                                                                       |
-| `author`          | string                                                   | Article author. Used in Article JSON-LD.                                                                                                                |
-| `date_published`  | string                                                   | ISO 8601 date. Used in Article JSON-LD.                                                                                                                 |
-| `json_ld`         | string                                                   | Custom JSON-LD schema as a JSON string. For FAQ, recipe and event pages, use the [structured data tools](#structured-data-tools).                       |
+| Field             | Type                                                     | Description                                                                                                                                                                                                           |
+| ----------------- | -------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `content_type`    | string                                                   | Content type ID; defaults to `page`.                                                                                                                                                                                  |
+| `fields`          | object                                                   | Custom values defined by the content type.                                                                                                                                                                            |
+| `path`            | string                                                   | Explicit public path, overriding the type URL pattern.                                                                                                                                                                |
+| `title`           | string                                                   | Page title. Used in nav and as default `<title>` tag.                                                                                                                                                                 |
+| `slug`            | string                                                   | URL path. `""` = homepage. No leading slash.                                                                                                                                                                          |
+| `content_mode`    | `"blocks"` \| `"html"`                                   | `"blocks"` is the default for new pages. See [Blocks](../blocks/) for the block-mode editing surface.                                                                                                                 |
+| `html_content`    | string                                                   | Full page body HTML — used when `content_mode === "html"`.                                                                                                                                                            |
+| `blocks`          | `Block[]`                                                | Block tree — used when `content_mode === "blocks"`. Edit via `add_block`, `update_block`, `move_block`, `remove_block`, `duplicate_block`.                                                                            |
+| `footer_spacing`  | `auto` or `none`                                         | From Core 0.3.40 / MCP 0.45.145. `none` deliberately meets the footer edge to edge, suppressing shared outside spacing and its zero-spacing warning. `auto` uses the site default; explicit block spacing still wins. |
+| `template`        | string                                                   | Optional PageTemplate id. The renderer composes the template's block tree with the page's `blocks` at build time.                                                                                                     |
+| `status`          | `"published"` \| `"draft"` \| `"review"` \| `"unlisted"` | Only `published` and `unlisted` pages are built into the static site. `unlisted` pages are reachable by URL but excluded from listings and the sitemap.                                                               |
+| `publish_at`      | string                                                   | ISO 8601. Schedule the page to go live automatically at this time. Cleared once it fires.                                                                                                                             |
+| `unpublish_at`    | string                                                   | ISO 8601. Schedule the page to come down automatically.                                                                                                                                                               |
+| `kind`            | `"page"` \| `"article"`                                  | `"article"` enables Article JSON-LD schema.                                                                                                                                                                           |
+| `seo_title`       | string                                                   | Custom `<title>` tag. Defaults to `title + suffix`.                                                                                                                                                                   |
+| `seo_description` | string                                                   | `<meta name="description">`. Describe the actual page accurately; there is no fixed length requirement.                                                                                                               |
+| `og_title`        | string                                                   | Optional sharing title for OpenGraph/Twitter; empty uses the document title. Core 0.2.120 / MCP 0.45.90.                                                                                                              |
+| `og_description`  | string                                                   | Optional sharing description; empty uses the SEO description and its site fallbacks. Core 0.2.120 / MCP 0.45.90.                                                                                                      |
+| `seo_image_alt`   | string                                                   | Sharing-image description; empty uses the mapped public image alt when applicable.                                                                                                                                    |
+| `og_image`        | string                                                   | Absolute CDN URL for Open Graph image.                                                                                                                                                                                |
+| `canonical_url`   | string                                                   | Override the canonical URL (e.g. after a migration).                                                                                                                                                                  |
+| `noindex`         | boolean                                                  | Set `true` to add `<meta name="robots" content="noindex">`.                                                                                                                                                           |
+| `nofollow`        | boolean                                                  | Restrict following links independently. Public noindex defaults to `noindex,follow`; explicit nofollow and private previews remain restricted.                                                                        |
+| `language`        | string                                                   | Per-page language override (e.g. `"en"`, `"sv"`).                                                                                                                                                                     |
+| `author`          | string                                                   | Article author. Used in Article JSON-LD.                                                                                                                                                                              |
+| `date_published`  | string                                                   | ISO 8601 date. Used in Article JSON-LD.                                                                                                                                                                               |
+| `json_ld`         | string                                                   | Custom JSON-LD schema as a JSON string. For FAQ, recipe and event pages, use the [structured data tools](#structured-data-tools).                                                                                     |
 
 ## Homepage
 
@@ -503,3 +504,18 @@ trailing-slash policy. Otherwise routing follows the Content type and parent.
 An occupied explicit path returns a conflict; choose another slug.
 Canonical overrides and custom JSON-LD are not copied. Pass `version` to keep
 both the source read and clone creation in the selected site version.
+
+### Efficient edits and preview updates
+
+From Core 0.3.40, send multiple changed fields in one `update_page` patch with
+`save: true`. They share one save operation; fields are not saved individually.
+The revision and saved Page are committed together, and a newer concurrent draft
+causes a conflict instead of being discarded. Resolve the conflict by re-reading
+and reviewing the newer changes.
+
+The editor groups quick edits and updates its visual canvas once after Save.
+Editing search/sharing metadata alone does not continually reload the canvas;
+Save or open a standalone preview to inspect the updated metadata. HTML editing
+also sends only changed fields when autosaving. Content edits still update the
+visual preview. Preview navigation revalidates reusable collection data against
+storage on every request, so saved changes do not wait for a cache timeout.

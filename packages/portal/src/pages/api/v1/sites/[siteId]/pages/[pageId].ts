@@ -130,6 +130,7 @@ async function handleWrite(
     sanitization_warnings: result.sanitization_warnings,
     sanitization_details: result.sanitization_details,
     seo_warnings: result.seo_warnings,
+    ...(result.layout_warnings?.length ? { layout_warnings: result.layout_warnings } : {}),
     auto_redirects: result.auto_redirects,
     retired_redirects: result.retired_redirects,
   };

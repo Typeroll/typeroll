@@ -138,6 +138,14 @@ type Row = { path: string; id: string; data: string; revision: number };
 const toDoc = (row: Row): StoredDoc => ({ path: row.path, id: row.id, data: JSON.parse(row.data), revision: row.revision });
 
 export class SqlDocumentEngine {
+  private readonly cacheEpoch = crypto.randomUUID();
+  /** One synchronous read: validate the caller's collection copy before sending bytes.
+   * The object-wide sequence deliberately also invalidates on dependency writes. */
+  listVersioned(collection: string, options: Parameters<SqlDocumentEngine['list']>[1], known?: string): { token: string; docs?: StoredDoc[] } {
+    const token = `${this.cacheEpoch}:${this.sequence()}`;
+    return known === token ? { token } : { token, docs: this.list(collection, options) };
+  }
+
   constructor(private readonly sql: SqlDriver) {
     for (const statement of SCHEMA) this.sql.exec(statement);
     // Added after the first schema; databases created before it gain the column here.
@@ -248,12 +256,19 @@ export class SqlDocumentEngine {
       const expired = this.sql.exec<{ path: string }>('SELECT path FROM documents WHERE delete_at IS NOT NULL AND delete_at <= ? ORDER BY delete_at LIMIT ?',
         now, Math.max(1, Math.floor(limit))).map(row => row.path);
       for (const path of expired) this.sql.exec('DELETE FROM documents WHERE path = ?', path);
+      if (expired.length) {
+        const seq = this.sequence() + 1;
+        // Expired secrets leave no per-record tombstone. One watermark invalidates
+        // cached collections and snapshots without retaining expired identifiers.
+        for (const key of ['seq', 'expiry_seq']) this.sql.exec('INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value', key, seq);
+      }
       return expired.length;
     });
   }
 
   /** Whether any document under `root` changed or disappeared after `seq`. */
   changedSince(seq: number, root: string): boolean {
+    if ((this.sql.exec<{ value: number }>("SELECT value FROM meta WHERE key = 'expiry_seq'")[0]?.value ?? 0) > seq) return true;
     const prefix = `${root}/`;
     const changed = this.sql.exec("SELECT 1 FROM documents WHERE seq > ? AND (path = ? OR substr(path, 1, ?) = ?) LIMIT 1", seq, root, prefix.length, prefix);
     if (changed.length) return true;

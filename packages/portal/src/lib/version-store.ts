@@ -56,6 +56,8 @@ export interface PageWriteContext {
   /** Server-only branch promotion. Read and guard the source instead of trusting
    * caller-supplied provenance, including a provenance map on `update`. */
   promotedFrom?: string;
+  /** Internal Save effects: revision and guarded draft deletion, atomically with Page. */
+  saveEffects?: import('./datastore').ConditionalEffect[];
 }
 
 
@@ -428,8 +430,12 @@ export const vstore = {
     } }] : [];
     effects.push(...snapshot.guards.filter(guard => guard.path !== destination), ...schema.guards);
     if (promotion) effects.push(...promotion.guards, ...(sourceSchema?.guards ?? []));
+    effects.push(...(context?.saveEffects ?? []));
+    const removedPath = tombstonePath(orgId, siteId, versionId, 'pages', pageId);
+    const removedGuard = effects.find(effect => effect.path === removedPath);
+    if (removedGuard?.expected) { removedGuard.guardOnly = false; removedGuard.delete = true; }
     if (!(await store.compareAndReplaceDoc(destination, physical, next, effects))) throw new PageWriteConflict('Page changed. Reload before saving.');
-    await store.deleteDoc(tombstonePath(orgId, siteId, versionId, 'pages', pageId));
+
   },
 
   writePartial: async (

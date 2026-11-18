@@ -1,3 +1,5 @@
+import { footerSpacingAttributes } from './footer-spacing.js';
+import type { SiteStyle } from './site-styles.js';
 import { colorCss, tokenScale, scaleValue } from './design-tokens.js';
 import { linkTargetAttributes } from './link-attributes.js';
 export { linkTargetAttributes };
@@ -343,7 +345,13 @@ function sectionHomeHref(site: Record<string, unknown> | undefined, language: un
 
 export function renderBlock(block: Block, options: RenderBlocksOptions): string {
   const site = options.context?.site;
-  const html = renderBlockContent(block, options);
+  let html = renderBlockContent(block, options);
+  // Transparent global/conditional/composed blocks pass through their children's markers.
+  const type = getRegistryEntry(options.registry, block.type);
+  if (site?.footer_spacing != null && block.type !== GLOBAL_BLOCK_TYPE_ID && !['core/show_if', 'template/show_if'].includes(block.type) && (!type || !isComposedBlockType(type))) {
+    const effective = applyRouteOverrides(block, options.context?.route);
+    html = injectAttrsIntoFirstTag(html, footerSpacingAttributes(effective, (site.styles ?? []) as SiteStyle[]));
+  }
   // Without a site context (a bare preview) only the year expands, as before.
   if (!site) return resolveBuildVariables(html, undefined);
   return resolveAuthoredVariables(html, { year: site.current_year, renderVersion: resolveRenderVersion(options.renderVersion), siteName: site.name, fields: site.fields as Record<string, unknown> | undefined });

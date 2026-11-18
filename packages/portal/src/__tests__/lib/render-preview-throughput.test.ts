@@ -40,3 +40,42 @@ it('reads route collections once and overlaps independent preview inputs without
   expect(await renderPreviewBySlug(org, site, [], version)).toContain('<title>Changed title</title>');
   expect(pages).toHaveBeenCalledTimes(2);
 });
+
+it('revalidates the real sharded preview route without retransferring unchanged Page bodies', async () => {
+  const { SqlDocumentEngine } = await import('../../lib/store/sql-engine');
+  const { nodeSqliteDriver } = await import('../../lib/store/node-sqlite');
+  const { localTransport } = await import('../../lib/store/sql-store');
+  const { ShardedStore } = await import('../../lib/store/sharded-store');
+  const { setRuntimeStore } = await import('../../lib/datastore');
+  const engines = new Map<string, InstanceType<typeof SqlDocumentEngine>>();
+  const transfers: number[] = [];
+  const store = new ShardedStore({ transport: name => {
+    if (!engines.has(name)) engines.set(name, new SqlDocumentEngine(nodeSqliteDriver()));
+    const transport = localTransport(engines.get(name)!);
+    const read = transport.listVersioned!;
+    transport.listVersioned = async (...args) => {
+      const result = await read(...args);
+      if (args[0].endsWith('/pages')) transfers.push(JSON.stringify(result).length);
+      return result;
+    };
+    return transport;
+  } }, () => crypto.randomUUID());
+  const org = 'cached-preview-org', site = 'cached-preview-site', version = MAIN_VERSION_ID;
+  setRuntimeStore(() => store);
+  try {
+    await store.setDoc(paths.site(org, site), { name: 'Cache test' });
+    await store.setDoc(paths.settings(org, site, version), { site_name: 'Cache test' });
+    for (let i = 0; i < 50; i++) await store.setDoc(paths.page(org, site, `p${i}`, version), {
+      title: `Page ${i}`, slug: `p${i}`, path: `/p${i}/`, content_type: 'page', content_mode: 'html', html_content: `<p>${'x'.repeat(10000)}</p>`, status: 'published',
+    });
+    expect(await renderPreviewBySlug(org, site, ['p0'], version)).toContain('<title>Page 0</title>');
+    expect(await renderPreviewBySlug(org, site, ['p1'], version)).toContain('<title>Page 1</title>');
+    expect(transfers[0]).toBeGreaterThan(500000);
+    expect(transfers[1]).toBeLessThan(100);
+    await store.updateDoc(paths.page(org, site, 'p1', version), { title: 'Updated immediately' });
+    expect(await renderPreviewBySlug(org, site, ['p1'], version)).toContain('<title>Updated immediately</title>');
+    await store.deleteDoc(paths.page(org, site, 'p1', version));
+    expect(await renderPreviewBySlug(org, site, ['p1'], version)).toBeNull();
+    process.stdout.write(JSON.stringify({ benchmark: 'preview-route-page-library', cold_bytes: transfers[0], next_click_bytes: transfers[1] }) + '\n');
+  } finally { setRuntimeStore(null); }
+});
