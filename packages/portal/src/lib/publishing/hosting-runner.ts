@@ -43,7 +43,7 @@ import { assertDryRunValidation, finishDryRun, publicationLanguageWarnings } fro
 import { redactFailureText } from './http';
 import { compareImpact, legacyBaseline } from './impact';
 import { capturePublicationImpact } from './impact-preview';
-import { collapseMediaHostChains, moveWebsiteMediaToMediaHost, publicationMediaManifest, replacedMediaRedirects, retainDistinctMediaManifests } from './media-manifest';
+import { collapseMediaHostChains, moveWebsiteMediaToMediaHost, publicationMediaManifest, selectRetainedMedia, replacedMediaRedirects, retainDistinctMediaManifests } from './media-manifest';
 import { digest } from './providers.mjs';
 import { recordPublishedMedia } from './published-media';
 import { readSnapshot, saveSnapshot, type SnapshotReference } from './publication-snapshot';
@@ -218,7 +218,10 @@ export async function executeHostedPublication(args: EnqueueArgs): Promise<Deplo
       frozen = { ...mapped.content, reference_mapping: { format: 1, media: (mapped.content as any).reference_mapping?.media ?? [], website_origins: [...new Set(previousOrigins)] } };
       frozen = { ...frozen, site_url: `https://${host}`, site: { ...frozen.site, domain: host }, media: mapped.media, media_manifest: mapped.manifest, source_impact_snapshot: impactSnapshot };
       await store.updateDoc(jobPath, { build_impact: compareImpact(prior?.source_impact_snapshot, impactSnapshot, false, null, legacyBaseline(prior, frozen)) });
-      const retained = [...(prior?.retained_media_manifests ?? []), ...((prior?.media_manifest?.delivery === 'static' || prior?.media_manifest?.media_host === prior?.media_manifest?.website_host) && prior?.media_manifest ? [prior.media_manifest] : [])];
+      const previousMedia = [...(prior?.retained_media_manifests ?? []), ...((prior?.media_manifest?.delivery === 'static' || prior?.media_manifest?.media_host === prior?.media_manifest?.website_host) && prior?.media_manifest ? [prior.media_manifest] : [])];
+      const selection = selectRetainedMedia(previousMedia, frozen.media_manifest, frozen, mapped.libraryIds);
+      const retained = selection.manifests;
+      if (selection.warnings.length) { warnings.push(...selection.warnings); await store.updateDoc(jobPath, { warnings }); }
       frozen.media_replacement_redirects = replacedMediaRedirects(retained, frozen.media_manifest, frozen.redirects, prior?.media_replacement_redirects);
       frozen.redirects = [...frozen.redirects ?? [], ...frozen.media_replacement_redirects.filter((rule: any) => !frozen.redirects?.some((existing: any) => existing.from_path === rule.from_path))];
       const movedMedia = moveWebsiteMediaToMediaHost(retainDistinctMediaManifests(retained, frozen.media_manifest), frozen.media_manifest);

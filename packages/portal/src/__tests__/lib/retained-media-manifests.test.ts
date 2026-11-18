@@ -62,3 +62,41 @@ it('preserves older aliases and removes only routes already covered across retai
   expect(retainDistinctMediaManifests([manifest()], previous)).toEqual([]);
   expect(retainDistinctMediaManifests([previous], null)).toEqual([previous]);
 });
+
+import { authoredMediaContent, selectRetainedMedia } from '../../lib/publishing/media-manifest';
+
+it('omits deleted historical files before an older engine receives the publication', () => {
+  const old = manifest([file(1), file(2)]), current = manifest([file(1)]);
+  const source = { pages: [{ body: '/media/1.png' }], media: [file(2)], media_manifest: old,
+    retained_media_manifests: [old], source_impact_snapshot: { media: [file(2)] },
+    reference_mapping: { media: [['/old.png', '/media/2.png']] } };
+  const selected = selectRetainedMedia([old, structuredClone(old)], current, source, ['1']);
+  expect(selected.deleted).toBe(1);
+  expect(selected.warnings).toEqual([expect.stringContaining('1 deleted')]);
+  expect(retainDistinctMediaManifests(selected.manifests, current)).toEqual([]);
+  expect(old.entries).toHaveLength(2);
+});
+
+it('keeps former addresses of used library media, but does not prepare unused library files', () => {
+  const old = manifest([file(1), file(2)]), current = manifest([{ ...file(1), public_path: '/new/1.png' }]);
+  const selected = selectRetainedMedia([old], current, { pages: [] }, ['1', '2']);
+  expect(selected.manifests[0].entries).toEqual([file(1)]);
+  expect(selected.unused).toBe(1);
+});
+
+it.each(['pages', 'partials', 'pageTemplates', 'settings', 'styles', 'blockTypes', 'menus', 'derived'])(
+  'refuses a deleted media reference in saved %s instead of silently weakening integrity', key => {
+    expect(() => selectRetainedMedia([manifest([file(2)])], null,
+      { [key]: [{ image: '/media/2.png?width=400' }] }, [])).toThrow('saved content still references deleted media 2');
+  });
+it('keeps media reached through an authored redirect, not generated redirect history', () => {
+  const old = manifest([file(2)]), rule = { id: 'legacy', from_path: '/old.png', to_path: '/media/2.png' };
+  expect(selectRetainedMedia([old], null, { redirects: [rule] }, ['2']).manifests).toEqual([old]);
+  expect(() => selectRetainedMedia([old], null, { redirects: [rule] }, [])).toThrow('deleted media');
+  expect(selectRetainedMedia([old], null, { redirects: [rule], media_replacement_redirects: [rule] }, []).manifests).toEqual([]);
+});
+it('does not mistake a filename prefix for a reference, and handles an empty library', () => {
+  expect(selectRetainedMedia([manifest([file(2)])], null, { pages: [{ body: '/media/2.png-other' }] }, []).deleted).toBe(1);
+  expect(selectRetainedMedia([], null, {}, [])).toEqual({ manifests: [], warnings: [], deleted: 0, unused: 0 });
+  expect(authoredMediaContent({ pages: [1], retained_media_manifests: [manifest()] })).toEqual({ pages: [1], redirects: [] });
+});

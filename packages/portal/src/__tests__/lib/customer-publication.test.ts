@@ -1761,3 +1761,25 @@ it('fails a publication whose form posts to an undeclared app endpoint with that
   expect(mocks.push).not.toHaveBeenCalled();
   expect((await mainTarget())?.last_publication).toBeUndefined();
 });
+
+it('freezes a new source without deleted unreferenced media from the live snapshot', async () => {
+  const store = getStore();
+  const { saveSnapshot } = await import('../../lib/publishing/publication-snapshot');
+  const old = { site_url: 'https://www.example.com', publication_id: 'old-publication',
+    media_manifest: { delivery: 'static', media_host: 'www.example.com', website_host: 'www.example.com',
+      entries: [{ id: 'deleted', filename: 'deleted.png', public_path: '/media/deleted.png', cdn_url: 'https://www.example.com/media/deleted.png', mime_type: 'image/png', aliases: [] }] } };
+  const snapshot = await saveSnapshot({ orgId: 'org', siteId: 'site', jobId: 'baseline' }, old);
+  await store.setDoc(`${paths.site('org', 'site')}/publishing_targets/main`, { job_id: null, lease_until: 0,
+    last_publication: { ...snapshot, snapshot_job_id: 'baseline', publication_id: old.publication_id } });
+  mocks.source.mockClear();
+  await executeCustomerPublication({ ...args, dryRun: true });
+  const job = await store.getDoc<any>(jobPath);
+  expect(job.status, job.error).toBe('succeeded');
+  expect(job.warnings).toContainEqual(expect.stringContaining('1 deleted'));
+  const frozen = mocks.source.mock.calls[0][0];
+  expect(frozen.media_manifest).toBeNull();
+  expect(frozen.retained_media_manifests).toEqual([]);
+  // This is the actual frozen input handed to engines, including older engines.
+  expect(JSON.stringify(frozen)).not.toContain('deleted.png');
+  expect(job.accept_missing_media).not.toBe(true);
+});

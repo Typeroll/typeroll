@@ -89,7 +89,7 @@ it('keeps a stable organization alias when a site gets its own media host and le
   expect(JSON.stringify(result.manifest)).not.toMatch(/synthetic-key|secret_access_key|X-Amz/);
 });
 
-it('serves media from the organization media host and preserves shared aliases and frozen paths after CMS metadata is removed', async () => {
+it('preserves shared aliases across domains but refuses to resurrect a deleted library record', async () => {
   const mediaPath = `${paths.media('org', 'site')}/image`;
   await getStore().setDoc(mediaPath, { filename: 'image.png', mime_type: 'image/png', cdn_url: oldUrl,
     sha256: sha, public_path: '/archive/photo.png', storage: { provider: 'organization_r2',
@@ -102,7 +102,6 @@ it('serves media from the organization media host and preserves shared aliases a
   const config = await getSiteDomains('org', 'site');
   await saveSiteDomains('org', 'site', { revision: config.revision, website_host: 'www.example.com',
     media_host: 'images.example.com', media_path_prefix: '', dns_mode: 'external' });
-  await getStore().deleteDoc(mediaPath);
   const { canReplaceOrganizationMediaHost } = await import('../../lib/publishing/domain-config');
   expect(await canReplaceOrganizationMediaHost('org', await getOrganizationDomains('org'))).toBe(false);
   const next = await publicationMediaManifest('org', 'site', first.content, 'www.example.com',
@@ -110,6 +109,10 @@ it('serves media from the organization media host and preserves shared aliases a
   expect(next.content.html_content).toBe('<img src="https://images.example.com/archive/photo.png">');
   expect(next.manifest?.entries[0].aliases).toContainEqual({ url: organizationUrl, key: 'media/abcdefghij/archive/photo.png' });
   expect(next.manifest?.entries[0].source_key).toBe(first.manifest?.entries[0].source_key);
+  await getStore().deleteDoc(mediaPath);
+  await expect(publicationMediaManifest('org', 'site', first.content, 'www.example.com',
+    { site_url: 'https://site.demos.example.com', media_manifest: first.manifest }))
+    .rejects.toMatchObject({ code: 'media_reference_deleted' });
 });
 
 
@@ -351,12 +354,17 @@ it('resolves deferred media in the builder and keeps aliases across domain-only 
   expect(first.content.pages).toEqual(source.pages);
   const frozen = { ...first.content, media_manifest: first.manifest, media: first.media };
   expect(resolvePublicationReferences(frozen).pages[0].html).toContain(first.media[0].cdn_url);
-  await getStore().deleteDoc(`${paths.media('org', 'site')}/image`);
   const next = await publicationMediaManifest('org', 'site', frozen, 'next.example.com', frozen, { deferReferences: true });
   const ready = resolvePublicationReferences({ ...next.content, site_url: 'https://next.example.com', media_manifest: next.manifest, media: next.media });
   // A website-only change keeps images on the organization media host.
   expect(ready.pages[0].html).toContain('https://media.example.net/media/abcdefghij/');
   expect(ready.pages[0].html).not.toContain('/api/sites/');
+  await getStore().deleteDoc(`${paths.media('org', 'site')}/image`);
+  await expect(publicationMediaManifest('org', 'site', frozen, 'next.example.com', frozen, { deferReferences: true }))
+    .rejects.toMatchObject({ code: 'media_reference_deleted' });
+  const unused = { ...frozen, pages: [] };
+  const omitted = await publicationMediaManifest('org', 'site', unused, 'next.example.com', frozen, { deferReferences: true });
+  expect(omitted.media).toEqual([]);
 });
 
 it('does not accept an unresolved private URL merely because a matching media ID is mapped', async () => {
