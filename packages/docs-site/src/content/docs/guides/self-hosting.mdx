@@ -444,7 +444,11 @@ and workers. Editor messages require the expected frame, exact origin and canvas
 identifier. Site HTML never receives portal cookies.
 
 Other runtime integrations can set `PREVIEW_ORIGIN_TEMPLATE` directly and route
-that wildcard to the portal. Only HTTPS origins without paths are accepted
+that wildcard to the portal. A fixed suffix in the first label, such as
+`https://{scope}-staging.preview-example.net`, allows separate environment routes
+while retaining first-level wildcard certificate coverage. Use distinct route
+suffixes for each environment; never route a staging host to production.
+Only HTTPS origins without paths are accepted
 (except local development on `localhost` / `*.localhost`). The current guard
 conservatively rejects bases sharing the last two DNS labels with the portal,
 including two different names under the same multi-label public suffix. Use a

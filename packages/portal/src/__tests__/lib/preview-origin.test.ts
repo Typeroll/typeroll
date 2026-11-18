@@ -25,6 +25,19 @@ describe('isolated preview boundary', () => {
     expect(isPreviewHost(new URL('https://nested.wrong.preview-example.net'))).toBe(true);
     expect(isPreviewHost(new URL('https://preview-example.net.attacker.test'))).toBe(false);
   });
+  it('separates environments within a wildcard certificate without weakening the reserved-host gate', () => {
+    vi.stubEnv('PREVIEW_ORIGIN_TEMPLATE', 'https://{scope}-staging.preview-example.net');
+    const staging = isolatedPreviewOrigin(scope)!;
+    expect(staging).toMatch(/^https:\/\/[a-f0-9]{32}-staging\.preview-example.net$/);
+    expect(previewOriginConfig()?.suffix).toBe('preview-example.net');
+    expect(isPreviewHost(new URL('https://unassigned.preview-example.net'))).toBe(true);
+    vi.stubEnv('PREVIEW_ORIGIN_TEMPLATE', 'https://{scope}-preview.preview-example.net');
+    expect(isolatedPreviewOrigin(scope)).not.toBe(staging);
+    expect(matchesPreviewOrigin(new Request(staging), scope)).toBe(false);
+    for (const template of ['https://prefix-{scope}.preview-example.net', 'https://{scope}-.preview-example.net', 'https://{scope}-staging.example.com', `https://{scope}-${'a'.repeat(31)}.preview-example.net`]) {
+      expect(() => previewOriginConfig({ PORTAL_PUBLIC_URL: 'https://app.example.com', PREVIEW_ORIGIN_TEMPLATE: template })).toThrow();
+    }
+  });
   it.each(['https://{scope}.example.com', 'http://{scope}.other.net', 'https://a.other.net/{scope}', 'https://{scope}.other.net/path', 'https://{scope}.other.net?x=1', 'https://user:pass@{scope}.other.net'])('refuses unsafe template %s', template => {
     expect(() => previewOriginConfig({ PORTAL_PUBLIC_URL: 'https://app.example.com', PREVIEW_ORIGIN_TEMPLATE: template })).toThrow();
   });

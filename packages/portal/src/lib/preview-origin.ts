@@ -8,11 +8,16 @@ export function previewOriginConfig(env: NodeJS.ProcessEnv = process.env): { tem
   const template = env.PREVIEW_ORIGIN_TEMPLATE?.trim();
   if (!template) return null;
   if (template.split('{scope}').length !== 2) throw new Error('PREVIEW_ORIGIN_TEMPLATE must contain one {scope} hostname label');
+  // A fixed suffix keeps environments on distinct first-level hosts covered
+  // by a single wildcard certificate. The scope must remain the first label.
+  if (!/^https?:\/\/\{scope\}(?:-[a-z0-9]+(?:-[a-z0-9]+)*)?\./.test(template)) throw new Error('Invalid isolated preview origin template');
   const sample = new URL(template.replace('{scope}', 'preview-scope'));
+  const label = sample.hostname.split('.')[0];
+  if (label.length - 'preview-scope'.length + 32 > 63) throw new Error('Preview scope hostname label is too long');
   const portal = new URL(env.PORTAL_PUBLIC_URL ?? '');
   const local = sample.hostname.endsWith('.localhost') && (portal.hostname === 'localhost' || portal.hostname === '127.0.0.1' || portal.hostname.endsWith('.localhost'));
-  if ((!['https:', ...(local ? ['http:'] : [])].includes(sample.protocol) || !['https:', ...(local ? ['http:'] : [])].includes(portal.protocol)) || sample.username || sample.password || sample.pathname !== '/' || sample.search || sample.hash || !sample.hostname.startsWith('preview-scope.')) throw new Error('Invalid isolated preview origin template');
-  const suffix = sample.hostname.slice('preview-scope.'.length);
+  if ((!['https:', ...(local ? ['http:'] : [])].includes(sample.protocol) || !['https:', ...(local ? ['http:'] : [])].includes(portal.protocol)) || sample.username || sample.password || sample.pathname !== '/' || sample.search || sample.hash) throw new Error('Invalid isolated preview origin template');
+  const suffix = sample.hostname.slice(label.length + 1);
   // Fail closed for a shared cookie domain. Operators must use a separate
   // registrable domain, not a sibling of the portal. This conservative check
   // also refuses shared public suffixes such as co.uk; choose a distinct base.
