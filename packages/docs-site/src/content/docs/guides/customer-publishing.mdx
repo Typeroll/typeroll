@@ -1360,8 +1360,7 @@ background media preparation is running on the same build account)". Typeroll
 does not know who else uses the provider account and does not claim to.
 
 The publication rechecks its own step while it waits. If the provider stopped
-the build before a runner claimed the step, Typeroll starts it again. In the
-next Core release, verification starts continue with bounded backoff after the
+the build before a runner claimed the step, Typeroll starts it again. From Core 0.3.43 (pending release), verification starts continue with bounded backoff after the
 normal three-start limit, until the six-hour queue deadline. A running or
 uncertain provider attempt is never duplicated. After the deadline,
 `build_queue_timeout` requires an explicit verification retry. Completed media
@@ -1375,7 +1374,7 @@ raw provider response.
 
 ### Publication status on the site overview
 
-In the next Core release, a matching public `x-typeroll-publication` observation
+From **Core 0.3.43 / MCP 0.45.146 (pending release)**, a matching public `x-typeroll-publication` observation
 shows **The new publication is live — final verification is incomplete** while
 checks are pending or interrupted. Upload completion alone does not establish
 that state. `job.serving` carries the expected and observed publication IDs,

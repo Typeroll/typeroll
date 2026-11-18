@@ -548,7 +548,7 @@ current files remain verified. See [verification and retired bundles](../../guid
 
 ## `retry_deploy_verification`
 
-The next Core release also accepts verification runner start/queue failures
+**Core 0.3.43 / MCP 0.45.146 (pending release)** also accepts verification runner start/queue failures
 (`shared_runner_start_failed`, `github_build_attempts_exhausted`,
 `build_queue_timeout`, `shared_build_timeout`, `build_connection_lost`, and
 `verification_static_verification_pending`) when the artifact build completed
@@ -567,7 +567,7 @@ unrelated failure types. Correct the reported technical problem first.
 
 The retry keeps the same job ID, saved source, Git commit and artifact. It checks
 the real public marker and files, then updates CMS publication status only if
-those checks pass. It does not build, upload, change DNS or publish later edits.
+those checks pass. It does not rebuild pages, upload, change DNS or publish later edits.
 Poll `get_deploy_status` for the same job after requesting the retry.
 
 ```json

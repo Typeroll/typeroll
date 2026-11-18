@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.43 (candidate, MCP 0.45.146)
+
+- Report the observed live publication separately from final verification, in
+  the portal, history and deployment API. Never infer live state from an upload.
+- Retry definitively stopped verification starts with bounded backoff and a
+  queue deadline, without duplicating uncertain or running provider attempts.
+- Resume missing candidate verification for already-served output through the
+  existing retry API, without rebuilding, uploading, changing DNS or applying
+  later edits. Reject superseded publications and preserve identity checks.
+
 ## 0.3.42 (candidate, MCP 0.45.145 unchanged)
 
 - Exclude deleted and unused media history from new publication manifests,
