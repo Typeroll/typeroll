@@ -75,10 +75,10 @@ export default function DeployHistory({ siteId }: Props) {
     <ul className="dh">
       {jobs.map((j) => (
         <li key={j.id} className="dh__row">
-          <span className="dh__pip" style={{ background: STATUS_COLOR[j.status] ?? '#aaa' }} aria-hidden />
+          <span className="dh__pip" style={{ background: (j.serving?.state === 'live_unverified' ? '#e9a83b' : STATUS_COLOR[j.status]) ?? '#aaa' }} aria-hidden />
           <div className="dh__main">
             <div className="dh__top">
-              <span className="dh__status">{j.status}</span>
+              <span className="dh__status">{j.serving?.state === 'live_unverified' ? 'Live · unverified' : j.status}</span>
               <span className="muted text-sm">· {j.environment}</span>
               {j.status === 'running' && j.phase && (
                 <span className="muted text-sm">· {j.phase}</span>

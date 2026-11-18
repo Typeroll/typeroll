@@ -3,6 +3,7 @@ import { getStore } from '../datastore';
 import { cloudflareClient } from './cloudflare-oauth';
 import { ConnectionError, getConnection } from './connections';
 import { findPublicationDeployment } from './providers.mjs';
+import { observePublicationServing } from './publication-serving';
 
 /** Only build identity and progress leave this boundary; Pages responses also contain secret environment variables. */
 export async function customerBuildStatus(orgId: string, siteId: string, jobId: string) {
@@ -19,9 +20,11 @@ export async function customerBuildStatus(orgId: string, siteId: string, jobId: 
   const root = `/accounts/${publication.account_id}/pages/projects/${publication.project}`;
   const [project, match] = await Promise.all([provider(root), findPublicationDeployment(provider, root, publication)]);
   const deployment = match ? await provider(`${root}/deployments/${encodeURIComponent(match.id)}`) : null;
+  const serving = publication.deployment_id ? await observePublicationServing(paths.deploy(orgId, siteId, jobId), publication, job.status === 'succeeded') : null;
+  const observation = serving ? (await getStore().getDoc<any>(paths.deploy(orgId, siteId, jobId)))?.public_probe : job.public_probe;
   return {
     job_id: jobId, status: job.status, phase: job.phase, build_impact: job.build_impact ?? null, render_report: job.render_report ?? null, seo_report: job.seo_report ?? null,
-    public_probe: job.public_probe ?? null,
+    public_probe: observation ?? null, serving,
     static_probe: job.static_probe ?? null, verification_message: job.verification_message ?? null,
     source: { owner: publication.owner, repository: publication.repo, branch: publication.branch, commit: publication.commit },
     project: { name: publication.project, uses_functions: project.uses_functions ?? null,

@@ -1,3 +1,4 @@
+import { canRetryVerification } from './verificationStatus';
 /**
  * Shared status indicator + deploy button used across the three editors
  * (HtmlPageEditor, PartialEditor). The goal is a
@@ -99,7 +100,7 @@ export function DeployButton({ siteId, pendingDeploy = true, onDeployed, onProgr
 
   useEffect(() => { onProgress?.(job); }, [job, onProgress]);
 
-  const verificationFailed = job?.status === 'failed' && ['publication_observation_timeout', 'publication_cache_refresh_required', 'publication_cache_refresh_external', 'publication_cache_refresh_failed'].includes(job.failure?.code ?? '');
+  const verificationFailed = canRetryVerification(job);
   const busy = job?.status === 'queued' || job?.status === 'running';
 
   async function go() {
@@ -160,7 +161,7 @@ export function DeployButton({ siteId, pendingDeploy = true, onDeployed, onProgr
       >
         {!busy && setup?.ready !== true ? (setup ? 'Publishing setup required' : 'Checking setup…') : label}
       </button>
-      {job?.status === 'failed' && ['publication_observation_timeout', 'publication_cache_refresh_required', 'publication_cache_refresh_external', 'publication_cache_refresh_failed'].includes(job.failure?.code ?? '') && <button type="button" className="btn btn--secondary btn--sm" onClick={() => retryVerification()} title="Check the same published files again. No rebuild, upload or DNS change.">Retry verification</button>}
+      {canRetryVerification(job) && <button type="button" className="btn btn--secondary btn--sm" onClick={() => retryVerification()} title="Check the same published files again. No rebuild, upload or DNS change.">Retry verification</button>}
       {busy && job?.verification_message && <span role="status" className="text-sm">{job.verification_message}</span>}
       {job?.render_report && <span role="status" className="text-sm">{job.render_report.rendered} pages rebuilt · {job.render_report.reused} reused</span>}
       {job?.phase === 'distributing' && <span role="status" className="text-sm">Distributing… The link will appear automatically when ready.</span>}

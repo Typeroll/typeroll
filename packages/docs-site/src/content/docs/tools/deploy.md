@@ -548,6 +548,16 @@ current files remain verified. See [verification and retired bundles](../../guid
 
 ## `retry_deploy_verification`
 
+The next Core release also accepts verification runner start/queue failures
+(`shared_runner_start_failed`, `github_build_attempts_exhausted`,
+`build_queue_timeout`, `shared_build_timeout`, `build_connection_lost`, and
+`verification_static_verification_pending`) when the artifact build completed
+and its exact deployment is still served. Missing candidate checks run again;
+source generation, uploads and DNS changes do not. `job.serving` distinguishes
+`live_unverified`, `verified`, `different_publication` and `unavailable`, with
+expected/observed IDs and a timestamp. `get_deploy_status` with
+`include_provider: true` refreshes the public observation on demand.
+
 From Core 0.2.39 / MCP 0.45.32, an admin can retry public verification of a
 customer publication that timed out **after** its build and candidate checks
 finished and its files reached the public host. In the site overview, choose

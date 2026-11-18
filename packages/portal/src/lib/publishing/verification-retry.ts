@@ -7,18 +7,26 @@ import type { GitJob } from './customer-runner';
 
 const unavailable = () => new ConnectionError('This deployment cannot resume verification. A finished, already-served publication with unchanged hosting is required.', 409, 'verification_retry_unavailable');
 
-/** No source, build, upload or DNS operation is authorized by this recovery; only path-scoped cache refreshes of the site's own addresses. */
+/** Only verification capacity/transport failures, never a failed artifact build. */
+export function candidateVerificationRetry(job: GitJob, resumed = false) {
+  if (resumed && job.verification_retry?.candidate === true) return true;
+  return ['shared_runner_start_failed', 'github_build_attempts_exhausted', 'build_queue_timeout', 'shared_build_timeout', 'build_connection_lost', 'verification_static_verification_pending']
+    .includes((resumed ? job.verification_retry?.failure : job.failure)?.code ?? '') && !job.git_publication?.candidate_verified_id;
+}
+
+/** No source generation, page build, upload or DNS operation is authorized by this recovery; only path-scoped cache refreshes of the site's own addresses. */
 export async function assertVerificationRetry(org: string, site: string, job: GitJob, resumed = false) {
   const publication = job.git_publication;
   const failure = resumed ? job.verification_retry?.failure : job.failure;
-  if (job.status !== (resumed ? 'running' : 'failed') || job.dry_run || publication?.snapshot_pruned_at || !['publication_observation_timeout', 'publication_cache_refresh_required', 'publication_cache_refresh_external', 'publication_cache_refresh_failed'].includes(failure?.code ?? '') ||
+  const candidate = candidateVerificationRetry(job, resumed);
+  if (job.status !== (resumed ? 'running' : 'failed') || job.dry_run || publication?.snapshot_pruned_at || !(candidate || ['publication_observation_timeout', 'publication_cache_refresh_required', 'publication_cache_refresh_external', 'publication_cache_refresh_failed'].includes(failure?.code ?? '')) ||
       !publication?.publication_id || !/^[a-f0-9]{64}$/.test(publication.publication_id) ||
       !publication.commit || !/^[a-f0-9]{40}$/.test(publication.commit) || publication.release_branch ||
-      !publication.build_task_key || !publication.verification_task_key || !publication.static_checks_key || !publication.probe_checks_key ||
-      !publication.project_prepared || !publication.public_media_prepared || !(publication.traffic_applied || job.publication_intent === 'domain_prepare') ||
+      !publication.build_task_key || !publication.static_checks_key || !publication.probe_checks_key || !publication.project_prepared || !publication.deployment_id ||
+      (candidate ? !publication.verification_checks_key : !publication.verification_task_key || !publication.public_media_prepared || !(publication.traffic_applied || job.publication_intent === 'domain_prepare') ||
       !publication.candidate_verified_id || publication.candidate_verified_id !== publication.deployment_id ||
       publication.deployment_receipt?.id !== publication.deployment_id || publication.deployment_receipt?.uses_functions !== false ||
-      publication.deployment_receipt?.latest_stage?.status !== 'success' || publication.deployment_receipt?.latest_stage?.name !== 'deploy') throw unavailable();
+      publication.deployment_receipt?.latest_stage?.status !== 'success' || publication.deployment_receipt?.latest_stage?.name !== 'deploy')) throw unavailable();
   const store = getStore();
   const currentSite = await store.getDoc<Site>(paths.site(org, site));
   if (!currentSite || !usesCustomerPublishing(currentSite)) throw unavailable();
@@ -28,10 +36,15 @@ export async function assertVerificationRetry(org: string, site: string, job: Gi
   const target = await store.getDoc<any>(`${paths.site(org, site)}/publishing_targets/${job.version_id}`);
   if (target?.last_publication && target.last_publication.content_cutoff > publication.content_cutoff) throw unavailable();
   if (target?.job_id && target.job_id !== job.id && target.lease_until > Date.now()) throw unavailable();
-  for (const key of [publication.build_task_key, publication.verification_task_key]) {
+  for (const key of [publication.build_task_key, ...(candidate ? [] : [publication.verification_task_key!])]) {
     const task = await store.getDoc<BuildTask>(`${buildTasksPath(org)}/${key}`);
     if (!task || task.status !== 'completed' || task.identity.job_id !== job.id || task.identity.org_id !== org ||
         task.identity.site_id !== site || task.identity.version_id !== job.version_id ||
+        task.identity.publication_id !== publication.publication_id || task.identity.commit !== publication.commit) throw unavailable();
+  }
+  if (candidate && publication.verification_task_key) {
+    const task = await store.getDoc<BuildTask>(`${buildTasksPath(org)}/${publication.verification_task_key}`);
+    if (!task || task.identity.job_id !== job.id || task.identity.org_id !== org || task.identity.site_id !== site || task.identity.version_id !== job.version_id ||
         task.identity.publication_id !== publication.publication_id || task.identity.commit !== publication.commit) throw unavailable();
   }
 }
@@ -51,7 +64,7 @@ export async function retryPublicationVerification(org: string, site: string, jo
   const saved = await store.compareAndReplaceDoc(path, job, {
     ...job, status: 'running', phase: 'retrying public verification', observation_started_at: now,
     finished_at: null, error: null, failure: null, coordinator_retries: 0,
-    verification_retry: { request_id: token, requested_at: now, failure: job.failure },
+    verification_retry: { request_id: token, requested_at: now, failure: job.failure, ...(candidateVerificationRetry(job) ? { candidate: true } : {}) },
     continuation: { token, reason: 'retry_public_verification', due_at: Date.now(), attempt: 0 },
   });
   if (!saved) throw new ConnectionError('Deployment state changed. Read its status before retrying.', 409, 'verification_retry_conflict');

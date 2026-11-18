@@ -2,7 +2,8 @@ import { previousWebsiteHosts, preparePreviousHosts, retirePreviousHosts } from 
 import { refreshBuildFailure } from '../builds/failure-status';
 import { journaledDomainProvider, armDomainCutover, recordDomainCutover, readDomainCutover, completeDomainCutover, rollbackDomainCutover } from './domain-cutover-journal';
 import { domainPublicationRevision } from './domain-config';
-import { assertVerificationRetry } from './verification-retry';
+import { assertVerificationRetry, candidateVerificationRetry } from './verification-retry';
+import { observePublicationServing } from './publication-serving';
 import { scheduleServingChecks, servingAlarm } from './serving-check';
 import { schedulePublication, waitForBuild, waitForPublicationCondition } from '../scheduling/continuation';
 import { recordPublishedMedia } from './published-media';
@@ -112,7 +113,7 @@ async function pendingRedirect(jobPath: string, publication: GitPublication, pre
 }
 
 interface Target { job_id: string | null; lease_id: string | null; lease_until: number; last_publication?: GitPublication }
-export type GitJob = DeployJob & { media_delivery?: (import('./media-domain').MediaDeliveryPending & { checked_at: string }) | null; pages_domain?: PagesDomainObservation | null; cache_recovery?: CacheRecovery; failure?: { code: string; stage?: string } | null; verification_retry?: { request_id: string; requested_at: string; failure: any }; coordinator_retries?: number; observation_started_at?: string; git_publication?: GitPublication; publication_intent?: 'domain_prepare'; domain_revision?: string; engine_update?: EngineUpdateRecord; source_publication?: GitPublication; clear_authored_noindex?: boolean };
+export type GitJob = DeployJob & { media_delivery?: (import('./media-domain').MediaDeliveryPending & { checked_at: string }) | null; pages_domain?: PagesDomainObservation | null; cache_recovery?: CacheRecovery; failure?: { code: string; stage?: string } | null; verification_retry?: { request_id: string; requested_at: string; failure: any; candidate?: boolean; candidate_requeued?: boolean }; coordinator_retries?: number; observation_started_at?: string; git_publication?: GitPublication; publication_intent?: 'domain_prepare'; domain_revision?: string; engine_update?: EngineUpdateRecord; source_publication?: GitPublication; clear_authored_noindex?: boolean };
 /** One bounded queue attempt. Build waiting is durable queue backoff, never a sleeping Astro process. */
 export async function executeCustomerPublication(args: EnqueueArgs): Promise<DeployRunOutcome> {
   const attemptStarted = performance.now();
@@ -221,6 +222,8 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
     return next;
   };
   const finishPublication = async (publication: GitPublication, domains: DomainConfiguration, frozen: any): Promise<DeployRunOutcome> => {
+    const serving = await observePublicationServing(jobPath, publication, true);
+    if (serving && serving.state !== 'verified') return waitForPublicationCondition(jobPath, 'waiting for the verified publication on the website address');
     let previousHosts: import('./previous-hosts').PreviousHost[] = [];
     // A normal publication also finishes legacy retirement. It may add an exact
     // redirect on an existing Pages host, never move DNS or change another rule.
@@ -331,7 +334,7 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
         return await waitForBuild(jobPath, args.orgId, job.git_publication!.build_task_key!);
       }
     }
-    if (verificationKey) {
+    if (verificationKey && (!candidateVerificationRetry(job, true) || job.verification_retry?.candidate_requeued)) {
       if (verifying && ['queued', 'running'].includes(verifying.status)) {
         if (verifying.lease_until <= Date.now()) await completedBuild(args.orgId, verificationKey);
         return await waitForBuild(jobPath, args.orgId, verificationKey);
@@ -548,10 +551,28 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       throw new ConnectionError('Publishing accounts or domain settings changed. Start a new deployment.', 409);
     }
     // A domain preparation that has not switched traffic resumes its own checkpointed flow, which verifies the current address.
-    if (job.verification_retry && !(preparingDomain && !publication.traffic_applied)) {
+    if (job.verification_retry && (candidateVerificationRetry(job, true) || !(preparingDomain && !publication.traffic_applied))) {
       // Recovery keeps the served artifact. A path-scoped cache refresh of this
-      // site's own address may run here, but never source generation, builds,
+      // site's own address may run here, but never source generation, page builds,
       // uploads, DNS or a zone-wide purge.
+      if (candidateVerificationRetry(job, true) && !publication.candidate_verified_id) {
+        // Read the exact existing deployment, never build/upload or modify DNS.
+        const root = `/accounts/${publication.account_id}/pages/projects/${publication.project}`;
+        const [project, deployed] = await Promise.all([cloudflare(root), cloudflare(`${root}/deployments/${encodeURIComponent(publication.deployment_id!)}`)]);
+        if (!matchingDeployment([deployed], { project: publication.project, commit: publication.commit!, branch: publication.branch }))
+          throw new ConnectionError('The served deployment no longer matches this publication. Read the latest publication status.', 409, 'deployment_identity_mismatch');
+        assertSuccessfulStaticDeployment(deployed, project);
+        const origin = new URL(deployed.url);
+        if (origin.protocol !== 'https:' || !origin.hostname.endsWith(`.${publication.project}.pages.dev`) || origin.username || origin.password || origin.port) throw new Error('Unexpected Cloudflare deployment origin');
+        const serving = await observePublicationServing(jobPath, publication);
+        if (serving?.state !== 'live_unverified') throw new ConnectionError('This publication is no longer served on its website address. Recovery cannot replace a newer site.', 409, 'verification_retry_unavailable');
+        const verified = await verifyCustomerCandidate(args.orgId, jobPath, publication, origin.origin, !job.verification_retry.candidate_requeued);
+        await store.updateDoc(jobPath, { verification_retry: { ...job.verification_retry, candidate_requeued: true } });
+        if (!verified) return await waitForBuild(jobPath, args.orgId, publication.verification_task_key!);
+        publication = { ...publication, candidate_verified_id: deployed.id, deployment_receipt: { id: deployed.id, url: deployed.url, uses_functions: false,
+          latest_stage: deployed.latest_stage, deployment_trigger: deployed.deployment_trigger, aliases: deployed.aliases ?? [], short_id: deployed.short_id } };
+        await store.updateDoc(jobPath, { git_publication: publication });
+      }
       const frozen = await readSnapshot(args, publication);
       const mediaHost = frozen.media_manifest?.delivery === 'static' ? frozen.media_manifest.media_host : null;
       const origins = [...new Set([`https://${publication.website_host}`, ...(mediaHost ? [`https://${mediaHost}`] : [])])];
@@ -753,6 +774,7 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       await store.updateDoc(jobPath, { status: 'running', phase: publication.build_engine_revision ? 'distributing static files on Cloudflare' : 'building on Cloudflare' });
       return await waitForPublicationCondition(jobPath, (await store.getDoc<GitJob>(jobPath))?.phase ?? 'provider');
     }
+    if (!job.serving) await observePublicationServing(jobPath, { ...publication, website_host: preparingDomain ? savedDomains.active?.website_host ?? fallback : publication.website_host });
     const candidate = new URL(deployment.url);
     if (publication.candidate_verified_id !== deployment.id) {
       if (deployment.uses_functions == null) deployment = await cloudflare(`${projectRoot}/deployments/${encodeURIComponent(deployment.id)}`);
@@ -960,6 +982,7 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
     const target = await store.getDoc<Target>(targetPath);
     if (leaseLost || target?.lease_id !== lease || target.lease_until <= Date.now()) return 'deferred';
     const failedJob = await store.getDoc<GitJob>(jobPath);
+    if (failedJob?.git_publication?.deployment_id) await observePublicationServing(jobPath, failedJob.git_publication);
     const transportCode = (error as any)?.code;
     const temporary = error instanceof ProviderTransportError ||
       (error instanceof ProviderError && (error.status === 429 || error.status >= 500)) ||

@@ -1,3 +1,4 @@
+import { canRetryVerification } from './verificationStatus';
 /**
  * Dashboard-level summary of what's not yet on the live site.
  *
@@ -43,12 +44,13 @@ export default function DeployBanner({
   const [job, setJob] = useState<DeployProgress | null>(null);
   const failed = job?.status === 'failed';
   const active = job?.status === 'queued' || job?.status === 'running';
-  const verificationFailed = failed && ['publication_observation_timeout', 'publication_cache_refresh_required', 'publication_cache_refresh_external', 'publication_cache_refresh_failed'].includes(job.failure?.code ?? '');
+  const verificationFailed = canRetryVerification(job);
   const neverDeployed = !lastDeployedAt;
   const pending = totalPending > 0;
   const accent = neverDeployed || pending || distributing || failed || active;
 
-  const headline = verificationFailed ? 'Publication needs attention — final verification is incomplete.'
+  const headline = job?.serving?.state === 'live_unverified' ? 'The new publication is live — final verification is incomplete.'
+    : verificationFailed ? 'Publication needs attention — final verification is incomplete.'
     : failed ? 'The latest publication failed.'
     : active ? 'Publication in progress — waiting for verification.'
     : distributing ? 'Distributing… The link will appear automatically when ready.' : neverDeployed

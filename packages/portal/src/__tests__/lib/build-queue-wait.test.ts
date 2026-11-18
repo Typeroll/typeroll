@@ -171,3 +171,30 @@ it('reports other organization builds ahead, and restores the working phase once
   expect(await getStore().getDoc(jobPath)).toMatchObject({ phase: 'building on Cloudflare', build_wait: null, continuation: { due_at: null } });
   expect(await publicationBuildProgress('org', 'site', (await getStore().getDoc<any>(jobPath))!)).toMatchObject({ status: 'running', queue: null });
 });
+
+it('requeues a stopped verification start after backoff, without failing or starting overlapping attempts', async () => {
+  const key = await enqueue('verification', 'static_verification', { dispatch_started_at: now, dispatch_attempt: 3 }, 4);
+  provider.status = 'stopped';
+  await dispatchPendingBuild('org', key, config);
+  expect(provider.dispatch).not.toHaveBeenCalled();
+  advance(2 * MINUTE);
+  await Promise.all([dispatchPendingBuild('org', key, config), dispatchPendingBuild('org', key, config)]);
+  expect(provider.dispatch).toHaveBeenCalledOnce();
+  expect(await task(key)).toMatchObject({ status: 'queued', attempt: 0 });
+  expect(await getStore().getDoc(buildInputPath('org', key))).toMatchObject({ dispatch_attempt: 4, dispatch_uncertain: false });
+  provider.status = 'running';
+  advance(20 * MINUTE);
+  await dispatchPendingBuild('org', key, config);
+  expect(provider.dispatch).toHaveBeenCalledOnce();
+  advance(QUEUED_BUILD_LIMIT_MS);
+  await expect(dispatchPendingBuild('org', key, config)).rejects.toMatchObject({ code: 'build_queue_timeout' });
+  expect(await task(key)).toMatchObject({ status: 'failed', error_code: 'build_queue_timeout' });
+});
+
+it('does not record an uncertain provider dispatch when the normal build start limit rejects it', async () => {
+  const key = await enqueue('job', 'publication', { dispatch_attempt: 3 });
+  provider.status = 'stopped';
+  await expect(dispatchPendingBuild('org', key, config)).rejects.toMatchObject({ code: 'shared_runner_start_failed' });
+  expect((await getStore().getDoc<any>(buildInputPath('org', key)))!.dispatch_uncertain).not.toBe(true);
+  expect(provider.dispatch).not.toHaveBeenCalled();
+});
