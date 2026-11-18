@@ -24,6 +24,33 @@ the first deployment and does not require a domain or connected publishing
 accounts. Internal links stay within the preview. Save editor changes first to
 include them.
 
+## External forms and embeds in previews
+
+Core 0.3.41 supports a separate preview origin when the installation configures
+one. Typeroll Cloud must enable its preview domain before this option is active;
+self-hosters configure it as described in [Self-hosting](/docs/guides/self-hosting/#isolated-preview-domain).
+The site receives an automatic preview address for its Organization, Site and
+Version. You do not move the site's domain, change its DNS, or publish a static
+build to use it. Expiring preview links remain read-only and can include drafts.
+Treat a shared preview link as private.
+
+A real preview origin lets providers that accept network origins embed their
+forms while keeping customer scripts separate from the portal's login. A
+provider can still restrict embedding to specific domains, require consent,
+block third-party cookies or depend on scripts. The editing canvas does not run
+custom page or block scripts; use **Preview site** to test those integrations.
+
+External iframes have a small preview-only help disclosure. An iframe with no
+visible height opens that help automatically. **Open provider separately** opens
+the original URL; **Reload embed** asks before discarding unsent answers. Typeroll
+cannot reliably detect a provider's iframe security rejection and does not claim
+that a blank embed works on the live site. Check the published page separately
+before launch. Help never bypasses consent or appears in published output.
+
+Without a configured preview domain, previews retain the secure opaque sandbox.
+Some third-party embeds cannot run there. Historic revision and block-definition
+preview surfaces retain that sandbox too.
+
 ## Desktop layout
 
 <img

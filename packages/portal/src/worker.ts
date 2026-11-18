@@ -16,6 +16,7 @@ import { drainObjectOutbox, sweepScheduledObjects } from './lib/scheduling/sweep
 import { createOperatorApi, type OperatorApiMethods } from './lib/operator-api';
 import { setSiteHostingRuntime, type SiteHostingMethods } from './lib/publishing/site-hosting';
 import { setLoopbackDispatch } from './lib/runtime/loopback';
+import { isPreviewHost, previewHostAllows } from './lib/preview-origin';
 import { withBackgroundTasks } from './lib/runtime/background-tasks';
 
 setRuntimeStore(() => cloudflareStore(env as unknown as StoreEnv));
@@ -127,7 +128,11 @@ export class OperatorApi extends WorkerEntrypoint<PortalEnv> implements Operator
 }
 
 export default {
-  fetch: (request, workerEnv, ctx) => withBackgroundTasks(task => ctx.waitUntil(task), () => handle(request, workerEnv as never, ctx as never)),
+  fetch: (request, workerEnv, ctx) => {
+    // Gate before Astro/static asset handling as well as inside middleware.
+    if (isPreviewHost(new URL(request.url)) && !previewHostAllows(request)) return new Response('Not found', { status: 404, headers: { 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex, nofollow' } });
+    return withBackgroundTasks(task => ctx.waitUntil(task), () => handle(request, workerEnv as never, ctx as never));
+  },
   /** Safety net every 5 minutes: wake objects whose alarm is overdue. */
   async scheduled(_controller, workerEnv, ctx) {
     ctx.waitUntil(sweepScheduledObjects(object => (storeObject(workerEnv as unknown as StoreEnv, object) as unknown as { wake(): Promise<unknown> }).wake()));

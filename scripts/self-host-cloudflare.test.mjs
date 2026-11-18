@@ -334,3 +334,18 @@ test('the CLI plans from a local bundle with secrets from the environment', asyn
   assert.ok(!deps.calls.some(call => call[1] === 'r2' || (call[1] === 'deploy' && call[2] !== '--dry-run')), 'plan changes nothing');
   assert.throws(() => { throw new SelfHostError('x'); }, SelfHostError);
 });
+
+
+test('isolated preview configuration requires a separate cookie domain and updated Core', () => {
+  const raw = { ...rawConfig, core_version: '0.3.41', preview_domain: 'preview-example.net', preview_zone_id: 'b'.repeat(32) };
+  assert.throws(() => validateSelfHostConfig({ ...raw, core_version: '0.3.40' }), /0.3.41/);
+  assert.throws(() => validateSelfHostConfig({ ...raw, preview_domain: 'preview.example.org' }), /separate cookie domains/);
+  const config = validateSelfHostConfig(raw);
+  const release = { source_sha: SHA, workers: { portal: { main: 'entry.mjs', migrations: generated.migrations, crons: ['*/5 * * * *'], bindings: { r2_buckets: [] } } } };
+  const { configs } = deriveSelfHostConfigs({ config, generated, release, digest: 'sha256:' + 'd'.repeat(64) });
+  assert.equal(configs.portal.vars.PREVIEW_ORIGIN_TEMPLATE, 'https://{scope}.preview-example.net');
+  assert.deepEqual(configs.portal.routes[1], { pattern: '*.preview-example.net/*', zone_id: raw.preview_zone_id });
+  assert.equal(configs.portal.assets.run_worker_first, true);
+  assert.equal(configs.forms.vars.PREVIEW_ORIGIN_TEMPLATE, undefined);
+  assert.equal(configs.forms.routes.length, 1);
+});

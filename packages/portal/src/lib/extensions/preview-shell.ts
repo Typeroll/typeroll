@@ -17,6 +17,7 @@ interface ExtensionPreviewShellArgs {
   /** Request URL; putting the frame source in HTML preserves native history restoration. */
   pageUrl: string;
   storageScope: string;
+  realOrigin?: boolean;
   carriedQuery?: Record<string, string>;
 }
 
@@ -41,7 +42,7 @@ export function buildExtensionPreviewShell(args: ExtensionPreviewShellArgs): str
   return `<!doctype html>
 <html><head><meta charset="utf-8"><meta name="referrer" content="no-referrer"><meta name="viewport" content="width=device-width"><title>Typeroll preview</title>
 <style>html,body{margin:0;width:100%;height:100%;overflow:hidden}iframe{display:block;width:100%;height:100%;border:0}</style></head>
-<body><iframe src="${source}" id="preview" title="Site preview" sandbox="allow-scripts allow-forms allow-popups"></iframe>
+<body><iframe src="${source}" id="preview" title="Site preview" sandbox="allow-scripts allow-forms allow-popups${args.realOrigin ? ' allow-same-origin' : ''}"></iframe>
 <script>(function(){"use strict";
 var siteId=${json(args.siteId)},bridgeId=${json(args.bridgeId)},root=${json(args.rootPath.replace(/\/$/, ''))},carriedQuery=${JSON.stringify(args.carriedQuery ?? {}).replace(/</g, '\\u003c')};
 var frame=document.getElementById("preview");
@@ -81,7 +82,7 @@ function openExternal(href){if(typeof href!=="string"||href.length>8192)return;v
 // address, without the answer: load it again with the answer carried.
 function frameLoaded(){if(consentAnswered)reload();}
 frame.addEventListener("load",frameLoaded);
-addEventListener("message",function(event){var data=event.data;if(event.source!==frame.contentWindow||event.origin!=="null"||!data||data.channel!=="typeroll.extension-preview"||data.version!==1||data.bridge_id!==bridgeId)return;
+addEventListener("message",function(event){var data=event.data;if(event.source!==frame.contentWindow||event.origin!==${args.realOrigin ? 'location.origin' : '"null"'}||!data||data.channel!=="typeroll.extension-preview"||data.version!==1||data.bridge_id!==bridgeId)return;
   if(data.action==="storage.ready"){frame.contentWindow&&frame.contentWindow.postMessage({channel:"typeroll.extension-preview",version:1,bridge_id:bridgeId,action:"storage.init",storage:storage},"*");return;}
   if(data.action==="preview.notices"){showNotices(data.notices);return;}
   if(data.action==="site.navigate"){navigate(data.path);return;}

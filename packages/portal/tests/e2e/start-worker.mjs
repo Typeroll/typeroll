@@ -18,7 +18,7 @@
  */
 
 import { spawn, spawnSync } from 'node:child_process';
-import { chmodSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -62,7 +62,11 @@ const quote = (value) => {
 writeFileSync(envFile, Object.entries(vars).map(([key, value]) => `${key}=${quote(value)}`).join('\n') + '\n', { mode: 0o600 });
 chmodSync(envFile, 0o600);
 
-const cleanup = () => rmSync(runDir, { recursive: true, force: true });
+let isolatedConfig;
+const cleanup = () => {
+  rmSync(runDir, { recursive: true, force: true });
+  if (isolatedConfig) rmSync(isolatedConfig, { force: true });
+};
 
 if (process.env.TYPEROLL_E2E_SKIP_BUILD !== 'true') {
   const build = spawnSync('npm', ['run', 'build'], { cwd: PORTAL_DIR, stdio: 'inherit' });
@@ -72,9 +76,18 @@ if (process.env.TYPEROLL_E2E_SKIP_BUILD !== 'true') {
   }
 }
 
+// Mirror the deployed isolated-preview route: guard the host before static
+// assets too. Keep this per-run config beside the bundle for relative imports.
+if (vars.PREVIEW_ORIGIN_TEMPLATE) {
+  isolatedConfig = join(PORTAL_DIR, 'dist/server', `wrangler.preview-e2e-${process.pid}.json`);
+  const config = JSON.parse(readFileSync(join(PORTAL_DIR, 'dist/server/wrangler.json'), 'utf8'));
+  config.assets = { ...config.assets, run_worker_first: true };
+  writeFileSync(isolatedConfig, JSON.stringify(config));
+}
+
 const child = spawn('npx', [
   'wrangler', 'dev',
-  '--config', 'dist/server/wrangler.json',
+  '--config', isolatedConfig ?? 'dist/server/wrangler.json',
   '--local',
   '--ip', '127.0.0.1',
   '--port', String(port),

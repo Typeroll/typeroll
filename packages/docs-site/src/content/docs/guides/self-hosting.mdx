@@ -415,3 +415,43 @@ R2 binding points at the backups bucket.
 | `TYPEROLL_PUBLISH_CLOUDFLARE_CLIENT_SECRET`, `TYPEROLL_PUBLISH_GITHUB_CLIENT_SECRET`, `TYPEROLL_PUBLISH_GITHUB_PRIVATE_KEY` | portal        | no       |
 | `EXTENSION_SIGNING_PREVIOUS_PUBLIC_JWKS`, `PAGESPEED_API_KEY`, `SCRAPER_API_KEY`                                            | portal        | no       |
 | `TYPEROLL_STORE_TRANSFER_TOKEN` (only while backing up or restoring)                                                        | portal        | no       |
+
+## Isolated preview domain
+
+Available in Core 0.3.41 and later. This is optional: the existing opaque sandbox
+remains the safe default. To support third-party forms that reject opaque
+ancestors, dedicate a separate registrable domain to previews. Do not use a
+sibling of the portal on the same cookie domain.
+
+1. Configure proxied wildcard DNS and a TLS certificate covering
+   `*.preview-example.net` in your Cloudflare account. The zone must belong to
+   that account. A nested wildcard needs appropriate certificate coverage.
+2. Add `"preview_domain": "preview-example.net"` and
+   `"preview_zone_id": "YOUR_ZONE_ID"` to `self-host.cloudflare.json`.
+   Both fields are required together, with `portal_host` configured.
+3. Run the normal plan/apply flow. It adds the wildcard route to the portal
+   Worker and sets `PREVIEW_ORIGIN_TEMPLATE=https://{scope}.preview-example.net`.
+   Forms does not receive this route or variable. No per-site DNS is needed.
+4. Verify an authenticated editor preview, a signed standalone link, a private
+   image and an external form. Requests to `/api/auth/get-session`, `/app` and
+   write APIs on a preview host must return 404. Expired and revoked tickets must
+   fail. Test before sharing links with users.
+
+The origin label is derived from the Organization, Site and Version. Signed
+links authorize reads; preview hosts never establish a portal session. The
+iframe and response sandbox keep forms/scripts enabled but block top navigation
+and workers. Editor messages require the expected frame, exact origin and canvas
+identifier. Site HTML never receives portal cookies.
+
+Other runtime integrations can set `PREVIEW_ORIGIN_TEMPLATE` directly and route
+that wildcard to the portal. A fixed suffix in the first label, such as
+`https://{scope}-staging.preview-example.net`, allows separate environment routes
+while retaining first-level wildcard certificate coverage. Use distinct route
+suffixes for each environment; never route a staging host to production.
+Only HTTPS origins without paths are accepted
+(except local development on `localhost` / `*.localhost`). The current guard
+conservatively rejects bases sharing the last two DNS labels with the portal,
+including two different names under the same multi-label public suffix. Use a
+distinct suffix in that case. DNS and TLS must be ready before enabling the
+variable. To roll back, remove the configuration; old isolated links will no
+longer work and users should open a fresh portal preview.

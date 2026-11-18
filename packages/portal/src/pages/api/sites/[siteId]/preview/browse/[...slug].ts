@@ -1,3 +1,4 @@
+import { redirectToIsolatedPreview } from '../../../../../../lib/preview-redirect';
 import { authorizeRequestTiming } from '../../../../../../lib/runtime/request-timing';
 import type { APIRoute } from 'astro';
 import { requireSiteAccess } from '../../../../../../lib/access';
@@ -50,6 +51,8 @@ export const GET: APIRoute = async ({ cookies, params, request, locals }) => {
   // used by chat-AI action links so "look at what I changed" shows the
   // unsaved draft the AI just wrote.
   const draft = url.searchParams.get('draft') === '1';
+  const isolated = redirectToIsolatedPreview(request, { org_id: owner_org_id, site_id: site.id, version_id: versionId }, { slug: raw, workingCopy: !saved && (embed || draft), canvas: embed });
+  if (isolated) return isolated;
   const browseRoot = `/api/sites/${site.id}/preview/browse`;
   const isFrame = url.searchParams.get('frame') === '1';
   if (!embed && !isFrame) {

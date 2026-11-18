@@ -1,3 +1,4 @@
+import { isolatedPreviewOrigin } from '../../../../lib/preview-origin';
 // POST /api/sites/{siteId}/preview-link  body: { path?, render_version? }
 //
 // Portal (session) counterpart of POST /api/v1/sites/{siteId}/preview-link,
@@ -30,5 +31,5 @@ export const POST: APIRoute = async ({ request, cookies, params, locals }) => {
     ttlSeconds: 4 * 60 * 60,
     renderVersion: body.render_version as number | undefined,
   });
-  return json({ url: `/preview/${site.id}/${path}?t=${encodeURIComponent(token)}`, expires_at: expiresAt });
+  return json({ url: `${isolatedPreviewOrigin({ org_id: owner_org_id, site_id: site.id, version_id: versionId }) ?? ''}/preview/${site.id}/${path}?t=${encodeURIComponent(token)}`, expires_at: expiresAt });
 };

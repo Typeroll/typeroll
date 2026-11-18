@@ -1,3 +1,4 @@
+import { previewUrlOrigin } from '../../../../../lib/preview-origin';
 import { randomUUID } from 'node:crypto';
 // POST /api/v1/sites/{siteId}/preview-link
 //
@@ -77,7 +78,7 @@ export const POST: APIRoute = async ({ request, params }) => {
   // canonical portal URL) and fall back to request.url for self-hosted
   // / local-dev cases where the env isn't set.
   const portalUrl = process.env.PORTAL_PUBLIC_URL?.replace(/\/+$/, '');
-  const origin = portalUrl ?? new URL(request.url).origin;
+  const origin = previewUrlOrigin({ org_id: ctx.orgId, site_id: ctx.siteId, version_id: ctx.versionId }, portalUrl ?? new URL(request.url).origin);
   const path = `/preview/${ctx.siteId}/${targetSlug}`.replace(/\/+$/, '/') || `/preview/${ctx.siteId}`;
   const url = `${origin}${path}${path.includes('?') ? '&' : '?'}t=${encodeURIComponent(token)}`;
   return apiResponse(ctx, {

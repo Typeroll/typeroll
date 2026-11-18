@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.3.41 (candidate, MCP 0.45.145 unchanged)
+
+- Support operator-configured isolated preview origins per Organization, Site
+  and Version, with signed read-only links and exact-origin editor messaging.
+- Keep portal-origin previews opaque, reject portal/auth/write routes on preview
+  hosts and prevent session cookies or service workers on the preview surface.
+- Add preview-only external embed help, including collapsed iframe guidance,
+  without claiming that third-party content loaded or bypassing consent.
+- Add optional self-host wildcard routing and document DNS/TLS qualification.
+  Separate-origin previews remain disabled until configured by the installation.
+
 ## 0.3.40 (candidate, MCP 0.45.145)
 
 - Commit saved Pages, revision snapshots and guarded draft cleanup together;

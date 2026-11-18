@@ -1,3 +1,4 @@
+import { previewEmbedHelpScript } from './preview-embed-help';
 import { withPreviewReadCache } from './datastore';
 import { measureRequestStep } from './runtime/request-timing';
 // Server-side preview renderer.
@@ -151,6 +152,7 @@ export interface PreviewOptions {
   /** Enables the authority-free postMessage bridge used by the isolated
    * editor canvas. The id is an unguessable per-frame correlation value. */
   editorCanvasId?: string;
+  editorCanvasParentOrigin?: string;
   /** Connects an opaque, navigable preview document to its inert parent shell
    * for site navigation and tab-scoped Extension storage. */
   extensionPreviewBridge?: { id: string; parentOrigin: string };
@@ -448,6 +450,7 @@ async function renderPreviewDocument(
     blockJs,
     allowScripts: opts.allowScripts === true,
     editorCanvasId: opts.editorCanvasId,
+    editorCanvasParentOrigin: opts.editorCanvasParentOrigin,
     editorCanvasInteractive: opts.annotate === true,
     extensionRuntime,
     editorExtensionRuntime,
@@ -661,6 +664,7 @@ function buildHtml(args: {
    *  whether the shell may use markup that depends on JS to work. */
   allowScripts: boolean;
   editorCanvasId?: string;
+  editorCanvasParentOrigin?: string;
   editorCanvasInteractive?: boolean;
   extensionRuntime?: string;
   editorExtensionRuntime?: string;
@@ -675,7 +679,7 @@ function buildHtml(args: {
   /** The page's identity contract on `<body>`, the same attributes the published build writes. */
   bodyAttributes?: Record<string, string>;
 }): string {
-  const { page, settings, headerHtml, footerHtml, bodyHtml, blocksBody, blockCss, blockJs, allowScripts, editorCanvasId, editorCanvasInteractive, extensionRuntime, editorExtensionRuntime, hideExtensionPlaceholders, previewNavigationBridge, cookieConsentHtml, consentPreset, robotsBlocked, banner } = args;
+  const { page, settings, headerHtml, footerHtml, bodyHtml, blocksBody, blockCss, blockJs, allowScripts, editorCanvasId, editorCanvasParentOrigin, editorCanvasInteractive, extensionRuntime, editorExtensionRuntime, hideExtensionPlaceholders, previewNavigationBridge, cookieConsentHtml, consentPreset, robotsBlocked, banner } = args;
   const direction = languageDirection(page.language || settings.language || 'en');
   const siteStyles = siteStylesCss(settings.styles, { breakpoints: resolveBreakpointWidths(settings.responsive_breakpoints), colors: settings.colors ?? {}, renderVersion: resolveRenderVersion(settings.render_version) });
   const { fonts } = args;
@@ -752,6 +756,7 @@ ${banner ? renderBanner(banner) : ''}
 ${headerHtml ? withHeaderBehaviorAttribute(looksLikeSemanticTag(headerHtml, 'header') ? headerHtml : `<header class="site-header">${headerHtml}</header>`, settings.header_behavior) : ''}
 <main class="${blocksBody ? 'page-content page-content--blocks' : 'page-content'}">${bodyHtml}</main>
 ${footerHtml ? (looksLikeSemanticTag(footerHtml, 'footer') ? footerHtml : `<footer class="site-footer">${footerHtml}</footer>`) : ''}
+<script data-preview-embed-help-runtime="1">${previewEmbedHelpScript()}</script>
 ${previewNavigationBridge ? `<script data-preview-navigation-bridge="1">${previewNavigationBridge}</script>` : ''}
 ${allowScripts ? `<script data-sticky-header="1">${STICKY_HEADER_RUNTIME_JS}</script>` : ''}
 ${allowScripts ? `<script data-early-image-loading="1">${EARLY_IMAGE_LOADING_RUNTIME_JS}</script>` : ''}
@@ -759,7 +764,7 @@ ${allowScripts && activeHeaderBehavior(settings.header_behavior) === 'reveal_on_
 ${blockJs ? `<script data-blocks="1">(function(){var registry={};window.TyperollBlocks={register:function(id,init){registry[id]=init;},init:function(){Object.keys(registry).forEach(function(id){document.querySelectorAll('[data-block-type="'+id+'"]').forEach(function(el){try{registry[id](el,JSON.parse(el.getAttribute('data-block-data')||'{}'));}catch(e){console.error('[block init]',id,e);}});});}};${blockJs};window.TyperollBlocks.init();})();</script>` : ''}
 ${extensionRuntime ? `<script data-extension-runtime="1">${extensionRuntime}</script>` : ''}
 ${editorExtensionRuntime ? `<script data-editor-extension-runtime="1">${editorExtensionRuntime}</script>` : ''}
-${editorCanvasId ? `<script data-editor-canvas-bridge="1">${editorCanvasBridgeScript(editorCanvasId, editorCanvasInteractive === true)}</script>` : ''}
+${editorCanvasId ? `<script data-editor-canvas-bridge="1">${editorCanvasBridgeScript(editorCanvasId, editorCanvasInteractive === true, editorCanvasParentOrigin)}</script>` : ''}
 ${allowScripts ? settings.scripts_body_end ?? '' : ''}
 ${cookieConsentHtml ?? ''}
 </body>

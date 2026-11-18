@@ -9,7 +9,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import type { BlockChange } from '@typeroll/shared';
-import { EDITOR_CANVAS_FRAME_SANDBOX, isEditorCanvasMessage, useEditorCanvasId } from '../lib/editor-canvas-frame';
+import { editorCanvasSandbox, isEditorCanvasMessage, useEditorCanvasId } from '../lib/editor-canvas-frame';
 
 interface Props {
   siteId: string;
@@ -17,6 +17,7 @@ interface Props {
   changesUrl?: string;
   /** Plain preview URL (saved view). The draft view appends embed=1. */
   previewUrl: string;
+  previewOrigin?: string | null;
   onClose: () => void;
 }
 
@@ -33,7 +34,7 @@ const KIND_LABEL: Record<BlockChange['kind'], { label: string; color: string }> 
   removed: { label: 'Borttagen', color: '#f87171' },
 };
 
-export default function ReviewChanges({ siteId, pageId, previewUrl, onClose, changesUrl }: Props) {
+export default function ReviewChanges({ siteId, pageId, previewUrl, previewOrigin, onClose, changesUrl }: Props) {
   const [summary, setSummary] = useState<Summary | null>(null);
   const [error, setError] = useState<string | null>(null);
   const leftRef = useRef<HTMLIFrameElement>(null);
@@ -63,11 +64,11 @@ export default function ReviewChanges({ siteId, pageId, previewUrl, onClose, cha
       if (!canvasId) return;
       frame?.contentWindow?.postMessage({
         channel: 'typeroll.editor-canvas', version: 1, canvas_id: canvasId, action: 'scroll', scroll_y: y,
-      }, '*');
+      }, previewOrigin || '*');
     };
     const receive = (event: MessageEvent) => {
-      const fromLeft = isEditorCanvasMessage(event, leftRef.current, leftCanvasId);
-      if (!fromLeft && !isEditorCanvasMessage(event, rightRef.current, rightCanvasId)) return;
+      const fromLeft = isEditorCanvasMessage(event, leftRef.current, leftCanvasId, previewOrigin);
+      if (!fromLeft && !isEditorCanvasMessage(event, rightRef.current, rightCanvasId, previewOrigin)) return;
       const data = event.data as Record<string, unknown>;
       if (data.type !== 'scroll' || typeof data.scroll_y !== 'number') return;
       if (fromLeft) {
@@ -80,7 +81,7 @@ export default function ReviewChanges({ siteId, pageId, previewUrl, onClose, cha
     };
     window.addEventListener('message', receive);
     return () => window.removeEventListener('message', receive);
-  }, [leftCanvasId, rightCanvasId]);
+  }, [leftCanvasId, rightCanvasId, previewOrigin]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -117,11 +118,11 @@ export default function ReviewChanges({ siteId, pageId, previewUrl, onClose, cha
       <div className="review-changes__panes" style={panes}>
         <div style={pane}>
           <div style={paneLabel}>Saved</div>
-          {leftCanvasId && <iframe ref={leftRef} src={frameUrl('embed=1&saved=1', leftCanvasId)} sandbox={EDITOR_CANVAS_FRAME_SANDBOX} title="Saved version" style={frame} />}
+          {leftCanvasId && <iframe ref={leftRef} src={frameUrl('embed=1&saved=1', leftCanvasId)} sandbox={editorCanvasSandbox(previewOrigin)} title="Saved version" style={frame} />}
         </div>
         <div style={pane}>
           <div style={{ ...paneLabel, color: '#fbbf24' }}>Utkast (osparat)</div>
-          {rightCanvasId && <iframe ref={rightRef} src={frameUrl('embed=1', rightCanvasId)} sandbox={EDITOR_CANVAS_FRAME_SANDBOX} title="Utkast" style={frame} />}
+          {rightCanvasId && <iframe ref={rightRef} src={frameUrl('embed=1', rightCanvasId)} sandbox={editorCanvasSandbox(previewOrigin)} title="Utkast" style={frame} />}
         </div>
       </div>
       <style>{`

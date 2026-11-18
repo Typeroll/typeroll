@@ -27,6 +27,7 @@ export const LOCAL_WORKER_VARS: Record<string, string> = {
   // Local workerd has no Durable Object jurisdictions.
   STORE_JURISDICTION: 'none',
   PORTAL_PUBLIC_URL: target.portalUrl,
+  ...(!target.isRemote && process.env.TYPEROLL_E2E_ISOLATED_PREVIEW === 'true' ? { PREVIEW_ORIGIN_TEMPLATE: `http://{scope}.localhost:${new URL(target.portalUrl).port || '4322'}` } : {}),
   TYPEROLL_ORGANIZATION_ACCESS_POLICY: JSON.stringify({ initial_days: 30, read_days: 90, own_smtp: true, contact_url: 'https://example.invalid/trial' }),
   // Organization AI keys are stored encrypted. The Anthropic key check goes
   // to the stub that organization-ai.spec.ts serves on this port; no other

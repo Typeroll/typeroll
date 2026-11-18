@@ -1,5 +1,6 @@
 ---
 import { listBlockTemplates } from '../../../../../lib/block-templates-store';
+import { isolatedPreviewOrigin } from '../../../../../lib/preview-origin';
 import AppLayout from '../../../../../layouts/AppLayout.astro';
 import { vstore } from '../../../../../lib/version-store';
 import HtmlPageEditor from '../../../../../components/HtmlPageEditor.tsx';
@@ -36,6 +37,7 @@ const workingCopy = await readWorkingCopy(
 // Navigable preview — clicking links inside the iframe stays in preview
 // mode and sees drafts/edits across the whole site, not just this page.
 const contentType = page.content_type ? await vstore.contentType(orgId, siteId, versionId, page.content_type) : null;
+const previewOrigin = isolatedPreviewOrigin({ org_id: orgId, site_id: siteId, version_id: versionId });
 const previewUrl = pagePreviewUrl(siteId, page);
 
 // The editor's status indicator compares each page's date_updated to the
@@ -68,9 +70,9 @@ const slugNotice = requestedSlug && page.slug !== requestedSlug ? {
 ---
 <AppLayout title={`${page.title} — ${site.name}`} siteId={siteId} bare>
   {page.content_mode === 'blocks' ? (
-    <BlockPageEditor responsiveBreakpoints={editorSettings?.responsive_breakpoints} siteStyles={editorSettings?.styles ?? []} renderVersion={resolveRenderVersion(editorSettings?.render_version)} siteFonts={editorSettings?.fonts} globalBlocks={globalBlocks} blockTemplates={blockTemplates} canManageBlockTypes={permission !== 'read' && !locked} structureLocked={locked} client:load siteId={siteId} page={page} contentType={contentType ?? undefined} workingCopy={workingCopy} previewUrl={previewUrl} liveUrl={liveUrl} lastDeployedAt={lastDeployedAt} />
+    <BlockPageEditor responsiveBreakpoints={editorSettings?.responsive_breakpoints} siteStyles={editorSettings?.styles ?? []} renderVersion={resolveRenderVersion(editorSettings?.render_version)} siteFonts={editorSettings?.fonts} globalBlocks={globalBlocks} blockTemplates={blockTemplates} canManageBlockTypes={permission !== 'read' && !locked} structureLocked={locked} client:load siteId={siteId} page={page} contentType={contentType ?? undefined} workingCopy={workingCopy} previewUrl={previewUrl} previewOrigin={previewOrigin} liveUrl={liveUrl} lastDeployedAt={lastDeployedAt} />
   ) : (
-    <HtmlPageEditor client:load siteId={siteId} aiChatEnabled={aiChatEnabled} contentTypeHasExcerpt={contentType?.fields.some(field => field.name === 'excerpt') ?? false} page={page} workingCopy={workingCopy} previewUrl={previewUrl} liveUrl={liveUrl} lastDeployedAt={lastDeployedAt} />
+    <HtmlPageEditor client:load siteId={siteId} aiChatEnabled={aiChatEnabled} contentTypeHasExcerpt={contentType?.fields.some(field => field.name === 'excerpt') ?? false} page={page} workingCopy={workingCopy} previewUrl={previewUrl} previewOrigin={previewOrigin} liveUrl={liveUrl} lastDeployedAt={lastDeployedAt} />
   )}
   {slugNotice && (
     <div class="slug-adjusted-notice" role="status" id="slug-adjusted-notice">

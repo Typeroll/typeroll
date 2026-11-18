@@ -1,3 +1,4 @@
+import { redirectToIsolatedPreview } from '../../../../../lib/preview-redirect';
 import { authorizeRequestTiming } from '../../../../../lib/runtime/request-timing';
 import type { APIRoute } from 'astro';
 import { requireSiteAccess } from '../../../../../lib/access';
@@ -11,6 +12,8 @@ export const GET: APIRoute = async ({ cookies, params, locals, request }) => {
   const { site, versionId, owner_org_id } = guard.value;
   const { pageId } = params;
   if (!pageId) return new Response('Missing pageId', { status: 400 });
+  const isolated = redirectToIsolatedPreview(request, { org_id: owner_org_id, site_id: site.id, version_id: versionId }, { slug: '', canvas: true, pageId });
+  if (isolated) return isolated;
 
   // Renders SAVED content only — working copies are overlaid solely by the
   // editor iframe's embed mode on the browse route.
