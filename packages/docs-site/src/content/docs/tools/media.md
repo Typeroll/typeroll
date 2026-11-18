@@ -5,6 +5,34 @@ description: Upload images and other media through Typeroll’s media storage.
 
 Media storage follows the selected Organization. Before customer storage is ready, uploads can use the configured Typeroll runtime storage. As soon as R2 is connected and verified, new uploads go directly to the Organization's storage. Public media hosts are applied during publishing. See [Publishing setup](../../guides/customer-publishing/).
 
+## Publish a PDF without a website build
+
+From Core 0.3.44 / MCP 0.45.147, `publish_media_file { media_id }` copies a
+finalized PDF to the connected organization's public R2 bucket and verifies
+its anonymous HTTPS response, MIME type and SHA-256 before returning
+`public_url`. The REST equivalent is
+`POST /api/v1/sites/{site_id}/media/{media_id}/publish`.
+
+This needs site write permission and a configured organization media domain;
+it does not need a build engine or GitHub. Ask for permission to make the
+file public. Do not share the authenticated `cdn_url` of a private upload.
+`read_media` includes `file_publication` (`pending` or `public`, URL and
+verification timestamp), independently of `published_url`, which describes the
+latest website publication. Only a verified `public` result is ready to share.
+
+Retry the same operation after `media_file_copy_failed` or
+`media_file_verification_pending`. A pending copy may already be public; its
+address is retained for deletion and recovery. `media_domain_required` and
+`media_storage_unavailable` need Publishing setup; `media_file_not_ready`
+needs upload finalization; `media_file_busy` means another publication or
+removal must finish first. Non-PDF files return `media_file_type_unsupported`.
+The endpoint never starts a website build or changes DNS.
+
+The link remains stable across retries, display-name edits and website
+publications. A replacement upload has a new content-based URL. Deleting the
+library item removes its explicit public copy as well. See the
+[editor's PDF workflow](../../guides/media-for-editors/#publish-a-pdf-and-share-its-link).
+
 ## Direct file uploads through the API
 
 Browsers, scripts and AI agents can upload a local file directly to the

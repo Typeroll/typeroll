@@ -1,3 +1,4 @@
+import { withMediaFileOperation } from './media/file-publication';
 // Deleting the bytes behind a media record.
 //
 // This exists because the previous behaviour, inline in the media DELETE
@@ -293,6 +294,10 @@ export interface MediaItemDeletion {
  * existing record still points at stay (also 207: the file stays public).
  */
 export async function deleteMediaItem(orgId: string, siteId: string, mediaId: string, options: { actor?: string | null } = {}): Promise<MediaItemDeletion | null> {
+  if (!await getStore().getDoc(`${paths.media(orgId, siteId)}/${mediaId}`)) return null;
+  return withMediaFileOperation(orgId, siteId, mediaId, () => deleteMediaItemLocked(orgId, siteId, mediaId, options));
+}
+async function deleteMediaItemLocked(orgId: string, siteId: string, mediaId: string, options: { actor?: string | null }): Promise<MediaItemDeletion | null> {
   const store = getStore();
   const docPath = `${paths.media(orgId, siteId)}/${mediaId}`;
   const media = await store.getDoc<Media>(docPath);

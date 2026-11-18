@@ -33,6 +33,12 @@ async function uploadFromUrl(args: UrlUploadInput, deps: ToolDeps): Promise<Reco
 
 export const mediaTools: ToolDef[] = [
   {
+    name: 'publish_media_file',
+    description: 'Make a finalized PDF publicly accessible on the organization media domain, independently of website builds and image preparation. Requires write permission and connected organization storage/media domain. Upload and finalize first; uploading alone stays private. This explicitly publishes the file: obtain the owner’s authorization before sharing private material. Returns public_url only after anonymous delivery and SHA-256 verification. Retry the same media id after a transient copy or verification failure. Repeated publication preserves the link, including after display-name edits. The link remains until the file is deleted; website releases do not remove it. Do not share the authenticated cdn_url for private uploads.',
+    inputSchema: { media_id: z.string().min(1) },
+    handler: withErrorBoundary(async (args, { client, siteId }) => ok(await client.post(siteId, `media/${encodeURIComponent(args.media_id)}/publish`))),
+  },
+  {
     name: 'replace_media',
     description: 'Use another uploaded library file wherever a media item is referenced, without saving each Page. Site administrator only; site-wide across all versions. Defaults to dry_run:true. Preview and the next normal publication resolve the replacement; existing live files and Page-specific alt text stay unchanged. Does not publish, copy bytes, or delete either file. Pass replacement_media_id:null to undo. Replacement chains are checked for cycles and missing/unready files.',
     inputSchema: { media_id: z.string(), replacement_media_id: z.string().nullable(), dry_run: z.boolean().optional() },
@@ -92,7 +98,7 @@ export const mediaTools: ToolDef[] = [
   {
     name: 'create_upload_url',
     description:
-      'Mint a 5-min signed PUT URL for direct-to-R2 upload. After the upload completes, the CDN url is what you reference in <img src="…">. REQUIRED follow-up: call `finalize_media` after the PUT succeeds — without it the original ships with no Cache-Control (Lighthouse will flag it) and no responsive variants get generated. The response carries `finalize_url` as a reminder. This signed-PUT path is the INTEGRITY-SAFE way to upload bytes from disk or a generated asset — a direct `curl --data-binary @file` sends the bytes straight to R2 without transcribing them through the model, so it can\'t be corrupted the way a large `upload_media_inline` base64 blob can (ESPECIALLY use this, not inline, for SVG/logos). For a public source URL, `upload_media_from_url` is the one-call equivalent; reserve `upload_media_inline` for tiny payloads only.',
+      'Mint a 5-min signed PUT URL for direct-to-R2 upload. The returned cdn_url is an authenticated editor reference, not a public sharing link. REQUIRED follow-up: call `finalize_media` after the PUT succeeds to verify and freeze the private original. Publish a PDF explicitly with `publish_media_file`; images become public with a website publication. The response carries `finalize_url` as a reminder. This signed-PUT path is the INTEGRITY-SAFE way to upload bytes from disk or a generated asset — a direct `curl --data-binary @file` sends the bytes straight to R2 without transcribing them through the model, so it can\'t be corrupted the way a large `upload_media_inline` base64 blob can (ESPECIALLY use this, not inline, for SVG/logos). For a public source URL, `upload_media_from_url` is the one-call equivalent; reserve `upload_media_inline` for tiny payloads only.',
     inputSchema: {
       filename: z.string().min(1).describe('Should end in an extension of content_type (e.g. logo.png with image/png). When the extension is missing or belongs to another type, the type\'s extension is appended (logo → logo.png, photo.html → photo.html.png); the response returns the stored filename. Unsupported types answer 415.'),
       content_type: z.string().min(1).describe('e.g. "image/png", "image/jpeg", "application/pdf". SVGs are sanitized at finalize; an SVG that cannot be sanitized is refused.'),
@@ -244,8 +250,7 @@ export const mediaTools: ToolDef[] = [
   },
   {
     name: 'finalize_media',
-    description:
-      'Post-upload finalize for a single image: (1) applies immutable Cache-Control (public, max-age=31536000) to the R2 original via in-place CopyObject so the CDN caches it for a year, and (2) generates AVIF/WebP responsive variants if not already present. Call this immediately after a successful upload (the presigned PUT does NOT set cache headers — without finalize, Cloudflare defaults to ~4h and every visit re-fetches the original). Idempotent: safe to call twice. Skips variant work when variants already exist on the doc. INTEGRITY: the response is { ok, result: { sha256, size_bytes, ... } }; read result.sha256 and result.size_bytes for the stored original — compare against your source file to catch transit corruption before referencing the asset. Better: pass expected_sha256 (hash the file yourself first, e.g. `shasum -a 256 file`) and the server rejects a mismatch with a 422 so corrupted bytes never get blessed with immutable cache headers. Truncated SVGs are rejected outright.',
+    description: 'Finish an upload: verify its integrity, sanitize SVG when needed, and freeze the private original. In connected organization storage, images queue background preparation; PDFs need no variants. This does not publish the file. Use publish_media_file for a public PDF sharing link, or publish the website for referenced media. Repeating finalize is safe. Pass expected_sha256 to verify the original bytes.',
     inputSchema: {
       media_id: z.string(),
       expected_sha256: z.string().regex(/^[0-9a-fA-F]{64}$/).optional()

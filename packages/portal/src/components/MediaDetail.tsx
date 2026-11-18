@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { mediaKind, MediaThumb, mediaThumbStyles } from './MediaThumb';
 import { X, Copy, Trash2, ExternalLink } from 'lucide-react';
+import { publicMediaUrl } from '../lib/media/presentation';
 import type { Media } from '@typeroll/shared';
 
 interface Props {
@@ -25,6 +26,8 @@ export default function MediaDetail({ siteId, item, onClose, onUpdated, onDelete
   const [status, setStatus] = useState<Status>('idle');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const [publicationError, setPublicationError] = useState('');
 
   // Keep draft in sync if the parent passes a different item (clicking another
   // thumbnail without closing the drawer first).
@@ -32,6 +35,7 @@ export default function MediaDetail({ siteId, item, onClose, onUpdated, onDelete
     setDraft(item);
     setStatus('idle');
     setError(null);
+    setPublicationError('');
   }, [item.id]);
 
   // Esc closes.
@@ -41,7 +45,7 @@ export default function MediaDetail({ siteId, item, onClose, onUpdated, onDelete
     }
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [onClose, busy]);
+  }, [onClose, busy, publishing]);
 
   function patch<K extends keyof Media>(key: K, value: Media[K]) {
     setDraft((d) => ({ ...d, [key]: value }));
@@ -72,6 +76,25 @@ export default function MediaDetail({ siteId, item, onClose, onUpdated, onDelete
     }
   }
 
+  async function publishFile() {
+    setPublishing(true); setPublicationError('');
+    try {
+      const response = await fetch(`/api/sites/${encodeURIComponent(siteId)}/media/${encodeURIComponent(item.id)}/publish`, { method: 'POST' });
+      const result = await response.json();
+      // Even an unsuccessful verification may have made a public copy. Refresh
+      // its pending state so the panel never calls that file private.
+      const refreshed = await fetch(`/api/sites/${encodeURIComponent(siteId)}/media/${encodeURIComponent(item.id)}`).catch(() => null);
+      if (refreshed?.ok) {
+        const next: Media = await refreshed.json();
+        setDraft(current => ({ ...current, file_publication: next.file_publication, source_aliases: next.source_aliases }));
+        onUpdated(next);
+      }
+      if (!response.ok) throw new Error(result.error || 'The PDF could not be published.');
+      if (!refreshed?.ok) throw new Error('The file was published. Close and reopen its details to see its public link.');
+    } catch (error) { setPublicationError(error instanceof Error ? error.message : 'The PDF could not be published.'); }
+    finally { setPublishing(false); }
+  }
+
   async function destroy() {
     if (!confirm(`Delete "${item.filename}"? This removes the file and its published copies from storage and the cache; pages still showing it will show a missing image.`)) return;
     setBusy(true);
@@ -97,6 +120,8 @@ export default function MediaDetail({ siteId, item, onClose, onUpdated, onDelete
     navigator.clipboard?.writeText(value);
   }
 
+  const publicUrl = publicMediaUrl(item);
+  const ready = !item.storage || item.storage.state === 'ready';
   const kind = mediaKind(item);
   const isImage = kind === 'image';
   const dimensions =
@@ -104,10 +129,10 @@ export default function MediaDetail({ siteId, item, onClose, onUpdated, onDelete
 
   return (
     <>
-      <div className="mdetail__backdrop" onClick={() => !busy && onClose()} aria-hidden />
+      <div className="mdetail__backdrop" onClick={() => !busy && !publishing && onClose()} aria-hidden />
       <aside className="mdetail" role="dialog" aria-label={`Media: ${item.filename}`}>
         <header className="mdetail__head">
-          <button type="button" className="mdetail__close" onClick={onClose} aria-label="Close" disabled={busy}>
+          <button type="button" className="mdetail__close" onClick={onClose} aria-label="Close" disabled={busy || publishing}>
             <X size={18} />
           </button>
           <div className="mdetail__head-meta">
@@ -120,8 +145,8 @@ export default function MediaDetail({ siteId, item, onClose, onUpdated, onDelete
           </div>
         </header>
 
-        <div className="mdetail__preview">
-          {isImage ? (
+        <div className={`mdetail__preview${kind === 'pdf' ? ' mdetail__preview--file' : ''}`}>
+          {!ready ? <p role="status">Finishing upload… Reopen the file after upload verification completes.</p> : isImage ? (
             <img
               src={item.cdn_url}
               alt={draft.alt_text ?? draft.filename}
@@ -154,12 +179,32 @@ export default function MediaDetail({ siteId, item, onClose, onUpdated, onDelete
             <div className="mdetail__nonimage">
               <div style={{ width: 96 }}><MediaThumb item={item} size={96} /></div>
               <div style={{ marginTop: 8, fontWeight: 500 }}>{item.mime_type ?? 'file'}</div>
-              <a href={item.cdn_url} target="_blank" rel="noopener" style={{ marginTop: 8 }}>Open {kind === 'pdf' ? 'the PDF' : 'the file'}</a>
+              <a href={item.cdn_url} target="_blank" rel="noopener" style={{ marginTop: 8 }}>Preview {kind === 'pdf' ? 'the PDF' : 'the file'}</a>
             </div>
           )}
         </div>
 
         <div className="mdetail__body">
+          <section className="mdetail__section">
+            <div className="mdetail__label">{publicUrl ? 'Public' : item.file_publication?.state === 'pending' ? 'Public copy awaiting verification' : 'Private'}</div>
+            {publicUrl ? <>
+              <div className="mdetail__url">
+                <code title={publicUrl}>{publicUrl}</code>
+                <button type="button" onClick={() => copy(publicUrl)} title="Copy public URL" aria-label="Copy public URL" className="mdetail__icon-btn"><Copy size={14} /></button>
+                <a href={publicUrl} target="_blank" rel="noopener noreferrer" title="Open public file" aria-label="Open public file" className="mdetail__icon-btn"><ExternalLink size={14} /></a>
+              </div>
+              <p className="mdetail__hint">Anyone with this link can open the file without signing in. This link stays available until the file is deleted.</p>
+            </> : <>
+              <p className="mdetail__hint">{item.file_publication?.state === 'pending' ? 'The copy may already be public. Retry publication to verify its address before sharing it.' : 'Preview is available to signed-in site members. It is not a public sharing link.'}</p>
+              {kind === 'pdf' && <>
+                <button type="button" className="btn" onClick={publishFile} disabled={publishing || busy || !ready || status === 'saving'}>{publishing ? 'Publishing and verifying…' : 'Publish PDF'}</button>
+                <p className="mdetail__hint">Makes this PDF public on your organization’s media domain. No website build or image preparation is needed.</p>
+              </>}
+              {kind !== 'pdf' && <p className="mdetail__hint">Publish a page that uses this file to make it public.</p>}
+            </>}
+            {publicationError && <p role="alert" className="mdetail__hint">{publicationError}</p>}
+            {ready && <a href={item.cdn_url} target="_blank" rel="noopener noreferrer">Open private preview</a>}
+          </section>
           <section className="mdetail__section">
             <label className="mdetail__label" htmlFor="md-filename">Filename</label>
             <input
@@ -169,7 +214,7 @@ export default function MediaDetail({ siteId, item, onClose, onUpdated, onDelete
               onChange={(e) => patch('filename', e.target.value)}
               className="mdetail__input"
             />
-            <p className="mdetail__hint">Displayed in the library. The CDN URL doesn't change.</p>
+            <p className="mdetail__hint">Displayed in the library. Existing public links do not change.</p>
           </section>
 
           <section className="mdetail__section">
@@ -217,27 +262,15 @@ export default function MediaDetail({ siteId, item, onClose, onUpdated, onDelete
             </dl>
           </section>
 
-          <section className="mdetail__section">
-            <label className="mdetail__label">CDN URL</label>
-            <div className="mdetail__url">
-              <code title={item.cdn_url}>{item.cdn_url}</code>
-              <button type="button" onClick={() => copy(item.cdn_url)} title="Copy URL" className="mdetail__icon-btn">
-                <Copy size={14} />
-              </button>
-              <a href={item.cdn_url} target="_blank" rel="noopener" title="Open in new tab" className="mdetail__icon-btn">
-                <ExternalLink size={14} />
-              </a>
-            </div>
-          </section>
         </div>
 
         <footer className="mdetail__foot">
-          <button type="button" className="btn btn--ghost btn--sm mdetail__delete" onClick={destroy} disabled={busy}>
+          <button type="button" className="btn btn--ghost btn--sm mdetail__delete" onClick={destroy} disabled={busy || publishing}>
             <Trash2 size={14} /> {busy ? 'Deleting…' : 'Delete'}
           </button>
           <div style={{ flex: 1 }} />
-          <button type="button" className="btn btn--secondary" onClick={onClose} disabled={busy}>Cancel</button>
-          <button type="button" className="btn" onClick={save} disabled={status === 'saving' || busy}>
+          <button type="button" className="btn btn--secondary" onClick={onClose} disabled={busy || publishing}>Cancel</button>
+          <button type="button" className="btn" onClick={save} disabled={status === 'saving' || busy || publishing}>
             {status === 'saving' ? 'Saving…' : 'Save'}
           </button>
         </footer>
@@ -251,7 +284,7 @@ export default function MediaDetail({ siteId, item, onClose, onUpdated, onDelete
           @keyframes md-fade-in { from { opacity: 0 } to { opacity: 1 } }
           .mdetail {
             position: fixed; top: 0; right: 0; bottom: 0; z-index: 100;
-            width: min(560px, 100vw);
+            width: min(560px, 100vw); height: 100dvh; box-sizing: border-box;
             background: var(--color-surface);
             box-shadow: -24px 0 60px -12px rgba(0,0,0,0.25);
             display: flex; flex-direction: column;
@@ -262,6 +295,7 @@ export default function MediaDetail({ siteId, item, onClose, onUpdated, onDelete
             to   { transform: translateX(0) }
           }
           .mdetail__head {
+            flex-shrink: 0;
             display: flex; align-items: center; gap: 0.75rem;
             padding: 0.9rem 1.1rem;
             border-bottom: 1px solid var(--color-border);
@@ -283,6 +317,8 @@ export default function MediaDetail({ siteId, item, onClose, onUpdated, onDelete
             min-height: 240px;
             max-height: 40vh;
           }
+          .mdetail__preview--file { min-height: 0; background: var(--color-bg); padding: 0.75rem; }
+          .mdetail__preview--file .mdetail__nonimage > div:first-child { display: none; }
           .mdetail__preview video { display:block; max-width:100%; max-height:60vh; margin:0 auto; background:#000; }
           .mdetail__preview img {
             max-width: 100%; max-height: calc(40vh - 2rem);
@@ -293,7 +329,7 @@ export default function MediaDetail({ siteId, item, onClose, onUpdated, onDelete
           }
           .mdetail__nonimage { text-align: center; color: var(--color-text-muted); }
           .mdetail__body {
-            flex: 1; overflow-y: auto;
+            flex: 1; min-height: 0; overflow-y: auto;
             padding: 1.25rem 1.1rem;
             display: flex; flex-direction: column; gap: 1.1rem;
           }
@@ -348,6 +384,7 @@ export default function MediaDetail({ siteId, item, onClose, onUpdated, onDelete
           }
           .mdetail__icon-btn:hover { color: var(--color-text); background: var(--color-surface); text-decoration: none; }
           .mdetail__foot {
+            flex-shrink: 0;
             display: flex; align-items: center; gap: 0.6rem;
             padding: 0.85rem 1.1rem;
             border-top: 1px solid var(--color-border);

@@ -1,3 +1,4 @@
+import type { Media } from '@typeroll/shared';
 // Browser helper shared by the media uploaders (MediaLibrary, MediaPicker,
 // chat attachments). No server imports: this module is bundled for the client.
 //
@@ -64,4 +65,15 @@ export async function finalizeUpload(siteId: string, upload: UploadInfo, fetchIm
       : 'Upload the file again; if this keeps happening, delete it from the Media library.';
     throw new MediaFinalizeError(`${reason} ${advice}`, code ?? null, response.status, false);
   }
+}
+
+/** Read the real record after finalize, before offering editor or sharing actions. */
+export async function finalizedMediaRecord(siteId: string, upload: UploadInfo, fetchImpl: typeof fetch = fetch): Promise<Media> {
+  const id = uploadedMediaId(upload);
+  if (!id) throw new Error('The upload did not return a media id. Reload the library before editing this file.');
+  const response = await fetchImpl(`/api/sites/${encodeURIComponent(siteId)}/media/${encodeURIComponent(id)}`);
+  if (!response.ok) throw new Error('The file was uploaded. Reload the library to open its details.');
+  const media = await response.json() as Media;
+  if (media.id !== id || media.storage && media.storage.state !== 'ready') throw new Error('Upload verification is not complete. Reload the library after it finishes.');
+  return media;
 }
