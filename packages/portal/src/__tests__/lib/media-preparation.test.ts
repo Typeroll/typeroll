@@ -262,13 +262,13 @@ it('cancels the queued step of a round it starts again, so no abandoned step tak
   expect(await store.getDoc(`${buildTasksPath('org')}/task`)).toMatchObject({ status: 'running' });
 });
 
-it('never ends the job for a passing stop; each later round waits longer, up to an hour', async () => {
+it('stops after three transient retries and requires an explicit request to resume', async () => {
   const store = await configureEngine();
   await store.setDoc(`${paths.media('org', 'site')}/image`, imageDoc('a'));
   await requestMediaPreparation('org', 'site'); await releaseDelay(); await runPendingMediaPreparation('org');
   expect(mocks.enqueue).toHaveBeenCalledTimes(1);
   // Cloudflare did not start the runner for a round, more times than any fixed limit.
-  for (let round = 1; round <= 6; round++) {
+  for (let round = 1; round <= 3; round++) {
     await store.setDoc(`${buildTasksPath('org')}/task`, { status: 'failed', error_code: 'shared_runner_start_failed' });
     mocks.completed.mockRejectedValueOnce(new ConnectionError('Cloudflare could not start the shared runner. Open Publishing → Builds and check the build project.', 502, 'shared_runner_start_failed'));
     const before = Date.now();
@@ -282,6 +282,14 @@ it('never ends the job for a passing stop; each later round waits longer, up to 
     await releaseDelay(); await runPendingMediaPreparation('org');
     expect(mocks.enqueue).toHaveBeenCalledTimes(round + 1);
   }
+  mocks.completed.mockRejectedValueOnce(new ConnectionError('Provider could not start.', 502, 'shared_runner_start_failed'));
+  await runPendingMediaPreparation('org');
+  expect(await mediaPreparationStatus('org', 'site')).toMatchObject({ state: 'failed', error: expect.stringContaining('Automatic retries stopped after 3 retries') });
+  const enqueued = mocks.enqueue.mock.calls.length;
+  await releaseDelay(); await runPendingMediaPreparation('org');
+  expect(mocks.enqueue).toHaveBeenCalledTimes(enqueued);
+  await requestMediaPreparation('org', 'site'); await runPendingMediaPreparation('org');
+  expect(mocks.enqueue).toHaveBeenCalledTimes(enqueued + 1);
   expect([0, 1, 2, 3, 4].map(preparationRetryDelay)).toEqual([5, 10, 20, 40, 60].map(minutes => minutes * 60_000));
   // A completed round clears the recorded stop.
   mocks.completed.mockResolvedValueOnce({ task: {}, files: {} });

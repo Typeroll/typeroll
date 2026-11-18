@@ -107,6 +107,7 @@ export async function publicationMediaManifest<T extends Record<string, any>>(or
   ]);
   const domains = options.domains ?? storedDomains;
   const stored = new Map<string, MarkedMedia>(all.map(item => [item.id, item]));
+  const libraryIds = [...stored.keys()];
   const fromPrevious = Boolean(previousPublication?.media_manifest);
   // A domain-only rebuild preserves its frozen publication; normal builds resolve
   // current library replacements before discovering references and dependencies.
@@ -118,11 +119,16 @@ export async function publicationMediaManifest<T extends Record<string, any>>(or
       source_aliases: [entry.cdn_url.replace(previousPublication.site_url, `https://${websiteHost}`), entry.cdn_url, ...entry.aliases.map((alias: any) => alias.url)],
     })));
   }
-  const serialized = JSON.stringify(content);
+  const authored = authoredMediaContent(content);
+  const serialized = JSON.stringify([authored, replacePublicationReferences(authored, new Map(content.reference_mapping?.media ?? []))]);
   const references = (item: Media) => [item.cdn_url, ...(item.source_aliases ?? []), ...(item.variants ?? []).map(variant => variant.cdn_url)].filter(Boolean);
   const found = findReferences(serialized, all.flatMap(references));
   const media = all.filter(item => references(item).some(url => found.has(url)));
-  if (!media.length) { assertPublicMediaReferences(content); return { content, media: [], sourceMedia: [], warnings: [] as string[], manifest: null }; }
+  if (!media.length) { assertPublicMediaReferences(authored); return { content, media: [], sourceMedia: [], libraryIds, warnings: [] as string[], manifest: null }; }
+  if (fromPrevious) {
+    const deleted = media.find(item => !stored.has(item.id));
+    if (deleted) throw new ConnectionError(`Cannot publish: saved content still references deleted media ${deleted.id}. Remove the reference or restore the file in the media library before changing domains.`, 409, 'media_reference_deleted');
+  }
   if (!connection.cloudflare?.public_bucket || !connection.media_ready) throw new ConnectionError('Complete private and public R2 storage setup in Publishing.', 409, 'media_storage_required');
   const organizationHost = organization.media_host;
   // Images are served from the organization's public R2 bucket on a media
@@ -267,15 +273,56 @@ export async function publicationMediaManifest<T extends Record<string, any>>(or
   if (options.deferReferences) {
     // Validate exact references, not only media IDs: another host can contain
     // the same private path without being a registered source alias.
-    const { reference_mapping: _mapping, ...authored } = content;
+    const authored = authoredMediaContent(content);
     if (privateMediaReferences(authored).length) assertPublicMediaReferences(replacePublicationReferences(authored, replacements));
-  } else assertPublicMediaReferences(publicContent);
+  } else assertPublicMediaReferences(authoredMediaContent(publicContent));
   await markOrganizationMediaHostUsed(orgId, organization);
-  return { content: publicContent, media: entries, sourceMedia: media, warnings,
+  return { content: publicContent, media: entries, sourceMedia: media, libraryIds, warnings,
     manifest: { delivery, account_id: connection.cloudflare.account_id, original_bucket: connection.cloudflare.bucket, public_bucket: connection.cloudflare.public_bucket,
       media_host: host, website_host: websiteHost, dns_mode: domains.dns_mode, media_path_prefix: publicPrefix, site_prefix: prefix,
       // Share copies on a media host are keyed by their card background, so their exact objects can be granted before the build.
       ...(entries.some(entry => entry.share_source) ? { share_background: shareBackground(content.settings?.colors?.background) } : {}), entries } };
+}
+
+/** Saved inputs, excluding generated history that must never keep its own files alive. */
+export function authoredMediaContent(publication: Record<string, any>): Record<string, any> {
+  const { media: _media, media_manifest: _manifest, retained_media_manifests: _retained,
+    source_impact_snapshot: _impact, reference_mapping: _mapping, media_replacement_redirects: _replacement,
+    media_host_redirects: _host, ...content } = publication;
+  const generated = new Set([...(_replacement ?? []), ...(_host ?? [])].map(rule => rule.id));
+  return { ...content, redirects: (content.redirects ?? []).filter((rule: any) => !generated.has(rule.id)) };
+}
+
+/**
+ * Old snapshots are routing history, not a second media library. Keep aliases
+ * only for media the saved publication still uses. A deleted, unused file is
+ * omitted before grants, batches and totals are frozen; a real dangling saved
+ * reference fails explicitly without weakening missing-media or byte checks.
+ */
+export function selectRetainedMedia(previous: any[], current: any, content: Record<string, any>, libraryIds: string[]) {
+  const library = new Set(libraryIds), used = new Set<string>((current?.entries ?? []).map((entry: any) => entry.id));
+  const saved = authoredMediaContent(content);
+  // Mapped source URLs can predate the retained CDN address. Only mappings
+  // actually used by saved content count; the mapping table itself is history.
+  const authored = JSON.stringify([saved, replacePublicationReferences(saved, new Map(content.reference_mapping?.media ?? []))]);
+  const urls = (entry: any) => [entry.cdn_url, entry.public_path, ...(entry.aliases ?? []).map((alias: any) => alias.url),
+    ...(entry.variants ?? []).map((variant: any) => variant.cdn_url)].filter((url): url is string => typeof url === 'string' && !!url);
+  const entries = previous.flatMap(manifest => manifest.entries ?? []);
+  const found = findReferences(authored, entries.flatMap(urls));
+  const privateIds = new Set(privateMediaReferences(authored).map(ref => ref.mediaId));
+  const deleted = new Set<string>(), unused = new Set<string>();
+  const manifests = previous.map(manifest => ({ ...manifest, entries: (manifest.entries ?? []).filter((entry: any) => {
+    const referenced = privateIds.has(entry.id) || authored.includes(JSON.stringify(entry.id)) || urls(entry).some(url => found.has(url));
+    if (!library.has(entry.id)) {
+      if (referenced) throw new ConnectionError(`Cannot publish: saved content still references deleted media ${entry.id} at ${entry.public_path}. Remove the reference or restore the file in the media library.`, 409, 'media_reference_deleted');
+      deleted.add(entry.id); return false;
+    }
+    if (used.has(entry.id) || referenced) return true;
+    unused.add(entry.id); return false;
+  }) })).filter(manifest => manifest.entries.length);
+  const warnings = deleted.size || unused.size
+    ? [`Skipped obsolete media from publication history: ${deleted.size} deleted and ${unused.size} unused file(s). No saved content references the omitted files.`] : [];
+  return { manifests, warnings, deleted: deleted.size, unused: unused.size };
 }
 
 /** Keep old public routes without preparing identical current files a second time. */

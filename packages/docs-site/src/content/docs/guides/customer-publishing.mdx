@@ -634,7 +634,13 @@ changed.
 
 Original transfer and publication preparation are separate steps. The background
 transfer moves the library into private R2 storage. A publication prepares only
-media referenced by its frozen content and any retained published versions.
+media referenced by its frozen content. Older paths are retained only for files
+still in the Site's library that this publication uses. Publication history is
+not a second media library: deleted, unreferenced files are excluded before
+media grants and build totals are created, with an obsolete-media warning.
+If saved content still points to a deleted file, publication stops with
+`media_reference_deleted`; remove that reference or restore the media. This
+does not require accepting missing media or relaxing checksum verification.
 
 Core 0.1.94 includes background preparation after uploads and imports, using the
 Organization's selected Cloudflare or GitHub build engine. **Media** shows the
@@ -1224,7 +1230,12 @@ a terminal status instead of cancelling a build whose `completed` count still
 rises. `read_organization_build_engine` lists the same split for each active job.
 When the site's background image preparation has stopped, a publication says so
 in `job.warnings` and `job.media_preparation` (state, `error_code`, error), since
-it then prepares the remaining images itself and takes longer.
+it then prepares the remaining images itself and takes longer. Background
+preparation retries transient failures at most three times, then stops and
+requires **Retry preparation**. Its status retains the final cause and failed
+build identity; it does not keep consuming build slots indefinitely. This limit
+is separate from per-transfer retries within a build. Successful prepared
+variants remain reusable after a retry.
 
 `get_preview_link` returns `url`, the review address. Give people `url`: its
 wrapper keeps Extension state and navigation, and extension-host integration

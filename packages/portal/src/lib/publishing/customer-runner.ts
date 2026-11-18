@@ -41,7 +41,7 @@ import { publicationCookieReopenWarnings, publicationMenuWarnings, publicationSi
 import { publicationDemoMediaWarnings } from '../packages/demo-media';
 import { publicationPlaceholderWarnings } from '../placeholder-content';
 import { freezeSiteFonts } from './theme-font-freeze';
-import { moveWebsiteMediaToMediaHost, retainDistinctMediaManifests, replacedMediaRedirects, publicationMediaManifest, collapseMediaHostChains } from './media-manifest';
+import { moveWebsiteMediaToMediaHost, retainDistinctMediaManifests, replacedMediaRedirects, selectRetainedMedia, publicationMediaManifest, collapseMediaHostChains } from './media-manifest';
 import { customerBuildMediaAccess } from './r2-build-credentials';
 import { mediaPreparationStatus } from '../media/preparation';
 import { publicationRuntime } from './runtime-projection';
@@ -458,7 +458,10 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       } else {
         delete frozen.source_impact_snapshot;
       }
-      const retained = [...(prior?.retained_media_manifests ?? []), ...((prior?.media_manifest?.delivery === 'static' || prior?.media_manifest?.media_host === prior?.media_manifest?.website_host) && prior?.media_manifest ? [prior.media_manifest] : [])];
+      const previousMedia = [...(prior?.retained_media_manifests ?? []), ...((prior?.media_manifest?.delivery === 'static' || prior?.media_manifest?.media_host === prior?.media_manifest?.website_host) && prior?.media_manifest ? [prior.media_manifest] : [])];
+      const selection = selectRetainedMedia(previousMedia, frozen.media_manifest, frozen, mapped.libraryIds);
+      const retained = selection.manifests;
+      if (selection.warnings.length) { warnings.push(...selection.warnings); await store.updateDoc(jobPath, { warnings }); }
       frozen.media_replacement_redirects = replacedMediaRedirects(retained, frozen.media_manifest, frozen.redirects, prior?.media_replacement_redirects);
       frozen.redirects = [...frozen.redirects ?? [], ...frozen.media_replacement_redirects.filter((rule: any) => !frozen.redirects?.some((existing: any) => existing.from_path === rule.from_path))];
       // Images served from the organization media host leave the Pages deployment; old website addresses redirect there.

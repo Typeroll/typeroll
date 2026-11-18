@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.42 (candidate, MCP 0.45.145 unchanged)
+
+- Exclude deleted and unused media history from new publication manifests,
+  including domain-only publications, before older build engines receive them.
+  Keep aliases of referenced library files and reject genuine deleted references.
+- Stop transient background media preparation after three automatic retries,
+  preserving an actionable failure instead of repeatedly consuming build slots.
+
 ## 0.3.41 (candidate, MCP 0.45.145 unchanged)
 
 - Support operator-configured isolated preview origins per Organization, Site
