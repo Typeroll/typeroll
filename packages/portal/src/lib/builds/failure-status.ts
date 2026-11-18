@@ -8,12 +8,21 @@ import { dispatchPendingBuild } from './jobs';
 import { ConnectionError } from '../publishing/connections';
 import { buildFailureMessage } from './failure-message';
 import { recordProviderStatus } from './queue-state';
+import { observePublicationServing } from '../publishing/publication-serving';
 
 export { buildFailureMessage } from './failure-message';
 
 /** Report a revoked execution on demand; never dispatch a replacement build. */
 export async function refreshBuildFailure(org: string, site: string, job: DeployJob): Promise<DeployJob> {
+  if (job.status === 'failed' && !job.serving && (job as any).git_publication?.deployment_id) {
+    const serving = await observePublicationServing(paths.deploy(org, site, job.id), (job as any).git_publication);
+    job = { ...job, serving };
+  }
   if (!['queued', 'running'].includes(job.status)) return job;
+  // An explicit retry is waiting for the coordinator to requeue its old failed
+  // verification task. A status poll must not cancel that durable continuation.
+  const recovery = (job as any).verification_retry;
+  if (recovery?.candidate === true && !recovery.candidate_requeued) return job;
   const publication = (job as any).git_publication;
   const key = publication?.verification_task_key ?? publication?.build_task_key;
   if (!key) return job;
@@ -40,7 +49,9 @@ export async function refreshBuildFailure(org: string, site: string, job: Deploy
         if (input.provider === 'github') {
           // A GitHub run claims only the task it was dispatched for, so a
           // completed run that never claimed it lost this build.
-          if ((await readGithubDispatch(await githubBuildClient(engine), engine, input))?.status === 'completed') {
+          if (input.kind === 'static_verification') {
+            await dispatchPendingBuild(org, key, engine);
+          } else if ((await readGithubDispatch(await githubBuildClient(engine), engine, input))?.status === 'completed') {
             await store.compareAndUpdateDoc<BuildTask>(taskPath, current => current.status === 'queued' && current.attempt === task!.attempt,
               { status: 'failed', token_hash: null, error_code: 'build_result_missing', completed_at: now });
             task = await store.getDoc<BuildTask>(taskPath);
@@ -63,6 +74,7 @@ export async function refreshBuildFailure(org: string, site: string, job: Deploy
     } catch { /* An unavailable provider is not evidence that a build failed. */ }
   }
   if (!task || !['failed', 'cancelled'].includes(task.status)) return job;
+  if (publication.deployment_id) await observePublicationServing(paths.deploy(org, site, job.id), publication);
   const code = task.error_code ?? 'shared_build_failed', diagnostic = task.error_detail ?? undefined;
   // Carry the validation report with the failure. This read can mark the job
   // failed before the publication runner copies the report over, and a caller

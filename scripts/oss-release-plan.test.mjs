@@ -96,8 +96,8 @@ const bundleDescriptor = (release = {}) => ({
 test('the generated release manifest matches the runtime version sources', () => {
   const manifest = buildReleaseManifest({ sourceSha: SHA, bundle: bundleDescriptor(), recordedAt: '2026-09-06' });
   assert.equal(manifest.schema_version, 2);
-  assert.equal(manifest.core_version, '0.3.42');
-  assert.equal(manifest.mcp_version, '0.45.145');
+  assert.equal(manifest.core_version, '0.3.43');
+  assert.equal(manifest.mcp_version, '0.45.146');
   assert.equal(manifest.template_capabilities_version, '0.58.0');
   assert.equal(manifest.bundle_digest, DIGEST);
   assert.equal(manifest.operator_api_version, 1);

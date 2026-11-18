@@ -2025,6 +2025,9 @@ export interface DeployJob {
   /** Free-text phase the runner is in — shown in the UI while running. */
   phase?: string;
   verification_message?: string | null;
+  /** Observed public identity is separate from whether final checks passed. Never inferred from an upload. */
+  serving?: { state: 'live_unverified' | 'verified' | 'different_publication' | 'unavailable';
+    url: string; publication_id: string; observed_publication: string | null; checked_at: string };
   /** Resulting public URL on success. */
   deploy_url?: string;
   /** Final error message on failure. */

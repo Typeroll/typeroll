@@ -43,3 +43,10 @@ it('names the runner start failure once every bounded dispatch was stopped', asy
   expect(job.error).toContain('Cloudflare stopped every shared build runner');
   expect(job.error).not.toContain('build_result_missing');
 });
+
+it('does not let an editor poll re-fail an explicit verification retry before the coordinator requeues it', async () => {
+  await getStore().updateDoc(jobPath, { verification_retry: { candidate: true, request_id: 'retry' }, git_publication: { verification_task_key: 'task' } });
+  await getStore().updateDoc(taskPath, { status: 'failed', error_code: 'shared_runner_start_failed' });
+  expect(await refreshBuildFailure('org', 'site', (await getStore().getDoc<any>(jobPath))!)).toMatchObject({ status: 'running' });
+  expect(provider.dispatch).not.toHaveBeenCalled();
+});

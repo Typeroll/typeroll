@@ -1360,11 +1360,12 @@ background media preparation is running on the same build account)". Typeroll
 does not know who else uses the provider account and does not claim to.
 
 The publication rechecks its own step while it waits. If the provider stopped
-the build before a runner claimed the step, Typeroll starts it again, up to
-the existing attempt limit. Only a step that no runner claims within 6 hours
-fails, with `build_queue_timeout`: the provider never started a runner for it.
-Completed media is retained and the live site is unchanged. Earlier Core
-releases failed an unclaimed step after 15 minutes.
+the build before a runner claimed the step, Typeroll starts it again. From Core 0.3.43 (pending release), verification starts continue with bounded backoff after the
+normal three-start limit, until the six-hour queue deadline. A running or
+uncertain provider attempt is never duplicated. After the deadline,
+`build_queue_timeout` requires an explicit verification retry. Completed media
+is retained. A failed pre-upload build leaves the site unchanged; a final
+verification failure can occur after Pages already serves the new files.
 
 Wait for a queued build instead of publishing again: a new publication does
 not replace an active one and waits behind it. Retry after a terminal error.
@@ -1372,6 +1373,19 @@ GitHub 422 errors include a safe classified reason when available, never the
 raw provider response.
 
 ### Publication status on the site overview
+
+From **Core 0.3.43 / MCP 0.45.146 (pending release)**, a matching public `x-typeroll-publication` observation
+shows **The new publication is live — final verification is incomplete** while
+checks are pending or interrupted. Upload completion alone does not establish
+that state. `job.serving` carries the expected and observed publication IDs,
+URL and observation timestamp independently of the job status. A provider-status
+request refreshes that observation on demand; it is not continuous monitoring.
+
+A verification runner start or queue failure can resume through **Retry
+verification**. Recovery checks the existing deployment identity and current
+website response, runs the missing checks and retains the exact Git commit.
+It does not rebuild pages, upload files, change DNS or publish later edits.
+A newer publication, changed hosting or a failed artifact build prevents recovery.
 
 The overview distinguishes saved content from the latest publication result. A
 failed final check shows **Publication needs attention**, even if the website is

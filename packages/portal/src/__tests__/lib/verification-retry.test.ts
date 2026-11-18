@@ -62,3 +62,26 @@ it('never offers a zone-wide cache refresh, even for a failed cache recovery', a
   expect(await retryPublicationVerification('org', 'site', 'job', 'main')).toMatchObject({ verification_only: true, publication_id: publication.publication_id });
   expect(await store.getDoc(path)).toMatchObject({ status: 'running', cache_recovery: recovery, git_publication: publication });
 });
+
+it('admits a served deployment whose verification runner never started, without requiring a fabricated verified receipt', async () => {
+  const pending = { ...publication, candidate_verified_id: null, deployment_receipt: null, verification_checks_key: 'checks', public_media_prepared: false, traffic_applied: false };
+  await getStore().updateDoc(path, { failure: { code: 'shared_runner_start_failed' }, git_publication: pending });
+  await getStore().updateDoc('organizations/org/build_tasks/verify', { status: 'queued' });
+  expect(await retryPublicationVerification('org', 'site', 'job', 'main')).toMatchObject({ verification_only: true });
+  const job = (await getStore().getDoc<any>(path))!;
+  expect(job.verification_retry).toMatchObject({ candidate: true });
+  expect(job.git_publication).toEqual(pending);
+  await expect(assertVerificationRetry('org', 'site', job, true)).resolves.toBeUndefined();
+  // Completing the candidate check does not lose the original retry mode.
+  await getStore().updateDoc(path, { git_publication: { ...pending, candidate_verified_id: 'deployment' } });
+  await expect(assertVerificationRetry('org', 'site', (await getStore().getDoc<any>(path))!, true)).resolves.toBeUndefined();
+});
+
+it('rejects a verification-start recovery if the actual build failed or the task belongs to another publication', async () => {
+  await getStore().updateDoc(path, { failure: { code: 'shared_runner_start_failed' }, git_publication: { ...publication, candidate_verified_id: null, verification_checks_key: 'checks' } });
+  await getStore().updateDoc('organizations/org/build_tasks/build', { status: 'failed' });
+  await expect(retryPublicationVerification('org', 'site', 'job', 'main')).rejects.toMatchObject({ code: 'verification_retry_unavailable' });
+  await getStore().updateDoc('organizations/org/build_tasks/build', { status: 'completed' });
+  await getStore().updateDoc('organizations/org/build_tasks/verify', { identity: { job_id: 'other' } });
+  await expect(retryPublicationVerification('org', 'site', 'job', 'main')).rejects.toMatchObject({ code: 'verification_retry_unavailable' });
+});

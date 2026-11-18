@@ -37,18 +37,18 @@ export async function saveCustomerVerification(org: string, current: CustomerVer
 }
 
 /** The customer engine owns exhaustive candidate checks; the coordinator consumes only its receipt. */
-export async function verifyCustomerCandidate(org: string, jobPath: string, current: CustomerVerification, origin: string) {
+export async function verifyCustomerCandidate(org: string, jobPath: string, current: CustomerVerification, origin: string, requeueFailed = false) {
   const store = getStore(), task = await store.getDoc<BuildTask>(`${buildTasksPath(org)}/${current.build_task_key}`);
   const config = await readEngineConfiguration(org, current.build_provider);
   if (!task || !config || config.revision !== task.engine_revision || !config.static_verification) throw new ConnectionError('Update the build engine in Publishing → Builds before publishing.', 409, 'build_engine_update_required');
   let key = current.verification_task_key;
-  if (!key) {
+  if (!key || requeueFailed) {
     if (!current.commit || !current.branch) throw new ConnectionError('Verification requires the committed publication identity.', 409, 'publication_commit_required');
     const checks = await buildStorage(org, async storage => JSON.parse((await storage.read(current.verification_checks_key!, 32 * 1024 * 1024)).toString('utf8')));
     // A domain promotion retains the built artifact but publishes a new commit on main.
     // Its verification callback must identify that promoted deployment, not the source branch.
     const identity = { ...task.identity, commit: current.commit, branch: current.branch };
-    const queued = await enqueueBuild(config, identity, { 'verification.json': JSON.stringify({ publication_id: task.identity.publication_id, origin, checks }) }, 'static_verification');
+    const queued = await enqueueBuild(config, identity, { 'verification.json': JSON.stringify({ publication_id: task.identity.publication_id, origin, checks }) }, 'static_verification', { requeueFailed });
     key = queued.key; current.verification_task_key = key;
     await store.updateDoc(jobPath, { git_publication: current });
   }

@@ -66,3 +66,25 @@ for (const width of [390, 1280]) test(`offers only a verification retry for a st
   expect(bodies).toEqual([{ retry_verification_job_id: 'cache-test' }]);
   await expect(page.getByRole('button', { name: 'retrying public verification…', exact: true })).toBeDisabled();
 });
+
+for (const width of [390, 1280]) test(`reports live unverified output and resumes only verification at ${width}px`, async ({ page }, info) => {
+  const bodies: unknown[] = [];
+  const failed = { id: 'runner-start', status: 'failed', phase: 'failed', error: 'The verification runner could not start.', failure: { code: 'shared_runner_start_failed' },
+    serving: { state: 'live_unverified', url: 'https://example.com', publication_id: 'a'.repeat(64), observed_publication: 'a'.repeat(64), checked_at: '2026-11-18T08:00:00Z' } };
+  await page.route('**/api/sites/default/deploy', route => {
+    if (route.request().method() === 'POST') { bodies.push(route.request().postDataJSON()); return route.fulfill({ json: { job_id: failed.id, verification_only: true } }); }
+    return route.fulfill({ json: { latest_job: failed } });
+  });
+  await page.route('**/api/sites/default/deploys/runner-start', route => route.fulfill({ json: { ...failed, status: 'running', phase: 'verifying static output' } }));
+  await stubPublishingReady(page); await page.setViewportSize({ width, height: 900 });
+  await gotoReady(page, '/app/sites/default');
+  await expect(page.locator('.deploy-banner__text')).toHaveText('The new publication is live — final verification is incomplete.');
+  const retry = page.getByRole('button', { name: 'Retry verification', exact: true });
+  await expect(retry).toBeVisible();
+  await expect(page.getByRole('alert')).toContainText('Retry verification without rebuilding.');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: info.outputPath(`live-unverified-${width}.png`) });
+  await retry.click();
+  expect(bodies).toEqual([{ retry_verification_job_id: failed.id }]);
+  await expect(page.getByRole('button', { name: 'verifying static output…', exact: true })).toBeDisabled();
+});

@@ -59,6 +59,10 @@ export async function dispatchPendingBuild(org: string, key: string, config: Eng
   const task = await store.getDoc<BuildTask>(`${buildTasksPath(org)}/${key}`);
   const input = await store.getDoc<BuildInput>(inputPath);
   if (!task || !input || !['queued', 'running'].includes(task.status) || task.lease_until > Date.now()) return;
+  if (queuedBuildExpired(task)) {
+    await expireQueuedBuild(store, org, key);
+    throw new ConnectionError('The verification runner did not start before the queue deadline. Retry verification without rebuilding.', 409, 'build_queue_timeout');
+  }
   if (buildDeadline(task) <= Date.now() || task.attempt >= buildAttemptLimit(task)) throw new ConnectionError('The shared build timed out. Retry the publication.', 409, 'shared_build_timeout');
   if (config.provider === 'github') return dispatchPendingGithubBuild(org, key, config, task, input);
   const client = await cloudflareClient(org);
@@ -90,16 +94,27 @@ export async function dispatchPendingBuild(org: string, key: string, config: Eng
   const served = !!input.dispatch_id && await runnerServedAnotherStep(org, key, input.dispatch_started_at ?? 0);
   const attempts = (input.dispatch_attempt ?? 0) + (served ? 0 : 1);
   const now = Date.now();
+  // A verification dispatch that the provider definitively stopped is safe to
+  // retry. Capacity/start failures must not turn already-served output into a
+  // failed publication after just three starts. The queue deadline still bounds
+  // recovery; ambiguous and running provider attempts above are never repeated.
+  if (!served && (input.dispatch_attempt ?? 0) >= buildAttemptLimit(task)) {
+    if (input.kind !== 'static_verification') throw new ConnectionError('Cloudflare could not start the shared runner. Open Publishing → Builds and check the build project.', 502, 'shared_runner_start_failed');
+    if (!input.dispatch_id || now < verificationRedispatchAt(input)) return;
+  }
   const won = await store.compareAndUpdateDoc<BuildInput>(inputPath, current =>
     (current.dispatch_lease_until ?? 0) <= now && current.dispatch_id === input.dispatch_id && !current.dispatch_uncertain,
     { dispatch_uncertain: true, dispatch_started_at: now, dispatch_lease_until: now + 120000, dispatch_attempt: attempts, provider_status: null, provider_status_at: null });
   if (!won) return;
-  if (!served && (input.dispatch_attempt ?? 0) >= buildAttemptLimit(task)) throw new ConnectionError('Cloudflare could not start the shared runner. Open Publishing → Builds and check the build project.', 502, 'shared_runner_start_failed');
   // Keep the lease after an uncertain provider response. Do not immediately submit a duplicate.
   try {
     const id = await dispatchCloudflareBuild(client, { account_id: config.account_id, trigger_uuid: config.trigger_uuid, runner_commit: config.runner_commit });
     await store.updateDoc(inputPath, { dispatch_id: id, dispatch_uncertain: false, dispatch_lease_until: now + 120000 });
   } catch { /* Preserve uncertainty until provider history or a claimed task establishes the outcome. */ }
+}
+
+function verificationRedispatchAt(input: BuildInput) {
+  return (input.dispatch_started_at ?? 0) + Math.min(15 * 60_000, 60_000 * 2 ** Math.min(4, Math.max(0, (input.dispatch_attempt ?? 0) - 2)));
 }
 
 export async function completedBuild(org: string, key: string) {
@@ -150,7 +165,10 @@ async function dispatchPendingGithubBuild(org: string, key: string, config: Engi
     if (task.provider_dispatch_id === String(run.id) && task.lease_until > Date.now()) return;
   }
   const now = Date.now(), nonce = randomUUID();
-  if ((input.dispatch_attempt ?? 0) >= buildAttemptLimit(task)) throw new ConnectionError('GitHub could not finish this build after three attempts. Check Publishing → Builds and retry the publication.', 502, 'github_build_attempts_exhausted');
+  if ((input.dispatch_attempt ?? 0) >= buildAttemptLimit(task)) {
+    if (input.kind !== 'static_verification') throw new ConnectionError('GitHub could not finish this build after three attempts. Check Publishing → Builds and retry the publication.', 502, 'github_build_attempts_exhausted');
+    if (!input.dispatch_id || now < verificationRedispatchAt(input)) return;
+  }
   const won = await store.compareAndUpdateDoc<BuildInput>(path, value => (value.dispatch_lease_until ?? 0) <= now && value.dispatch_id === input.dispatch_id && !value.dispatch_uncertain,
     { dispatch_id: '', dispatch_nonce: nonce, dispatch_uncertain: true, dispatch_started_at: now, dispatch_lease_until: now + 120000, dispatch_attempt: (input.dispatch_attempt ?? 0) + 1, provider_status: null, provider_status_at: null });
   if (!won) return;

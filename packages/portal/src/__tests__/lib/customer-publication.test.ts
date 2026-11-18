@@ -1783,3 +1783,27 @@ it('freezes a new source without deleted unreferenced media from the live snapsh
   expect(JSON.stringify(frozen)).not.toContain('deleted.png');
   expect(job.accept_missing_media).not.toBe(true);
 });
+
+it('recovers a live publication whose verification runner could not start without rebuilding, uploading or changing DNS', async () => {
+  await executeCustomerPublication(args); complete(); mocks.probe.mockResolvedValue(true);
+  await executeCustomerPublication(args);
+  const store = getStore(), original = (await store.getDoc<any>(jobPath))!;
+  const publication = { ...original.git_publication, build_task_key: 'finished-build', verification_task_key: 'waiting-verification', static_checks_key: 'full', probe_checks_key: 'probes', verification_checks_key: 'checks', project_prepared: true,
+    candidate_verified_id: null, deployment_receipt: null, public_media_prepared: false, traffic_applied: false };
+  await store.updateDoc(jobPath, { status: 'failed', failure: { code: 'shared_runner_start_failed' }, git_publication: publication });
+  const identity = { org_id: 'org', site_id: 'site', version_id: 'main', job_id: 'job', publication_id: publication.publication_id, commit: publication.commit };
+  await store.setDoc('organizations/org/build_tasks/finished-build', { status: 'completed', identity });
+  await store.setDoc('organizations/org/build_tasks/waiting-verification', { status: 'cancelled', identity });
+  const { retryPublicationVerification } = await import('../../lib/publishing/verification-retry');
+  await retryPublicationVerification('org', 'site', 'job', 'main');
+  mocks.probe.mockImplementation(async (origin, _path, id, options) => {
+    await options?.observe?.({ host: new URL(origin).hostname, ready: true, observed_publication: id, checked_at: new Date().toISOString() }); return true;
+  });
+  mocks.candidateVerification.mockResolvedValue(true); mocks.verify.mockResolvedValue(true);
+  for (const mock of [mocks.push, mocks.source, mocks.enqueue, mocks.direct, mocks.cloudflare]) mock.mockClear();
+  expect(await executePublicationPhase(args)).toBe('ran');
+  expect(await store.getDoc(jobPath)).toMatchObject({ status: 'succeeded', serving: { state: 'verified', observed_publication: publication.publication_id } });
+  expect(mocks.candidateVerification).toHaveBeenCalledWith('org', jobPath, expect.anything(), `https://immutable.${project}.pages.dev`, true);
+  for (const mock of [mocks.push, mocks.source, mocks.enqueue, mocks.direct]) expect(mock).not.toHaveBeenCalled();
+  expect(mocks.cloudflare.mock.calls.every(([, options]) => !options?.method || options.method === 'GET')).toBe(true);
+});

@@ -13,6 +13,7 @@ export interface DeployProgress {
   status: 'queued' | 'running' | 'succeeded' | 'failed';
   phase?: string;
   verification_message?: string | null;
+  serving?: DeployJob['serving'];
   error?: string;
   failure?: Partial<NonNullable<DeployJob['failure']>> | null;
 }
