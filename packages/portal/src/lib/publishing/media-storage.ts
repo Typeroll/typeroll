@@ -102,7 +102,7 @@ export async function finalizeStoredMedia(orgId: string, siteId: string, mediaId
     }
     const { requestMediaPreparation, QUEUED_PREPARATION } = await import('../media/preparation');
     const queued = await requestMediaPreparation(orgId, siteId, mediaId);
-    return { sha256: media.sha256, size_bytes: media.size_bytes, variants_generated: false, variant_count: 0, variants_pending: true, ...(queued ? { preparation: QUEUED_PREPARATION } : {}) };
+    return { sha256: media.sha256, size_bytes: media.size_bytes, variants_generated: false, variant_count: 0, variants_pending: /^image\//.test(media.mime_type ?? ''), ...(queued ? { preparation: QUEUED_PREPARATION } : {}) };
   }
   const r2 = await storageClient(orgId, location);
   try {
@@ -148,7 +148,7 @@ async function freezeVerifiedMedia(orgId: string, siteId: string, mediaId: strin
     }
     const { requestMediaPreparation, QUEUED_PREPARATION } = await import('../media/preparation');
     const queued = await requestMediaPreparation(orgId, siteId, mediaId);
-    return { sha256, size_bytes: size, variants_generated: false, variant_count: 0, variants_pending: true, ...(queued ? { preparation: QUEUED_PREPARATION } : {}) };
+    return { sha256, size_bytes: size, variants_generated: false, variant_count: 0, variants_pending: /^image\//.test(media.mime_type ?? ''), ...(queued ? { preparation: QUEUED_PREPARATION } : {}) };
 }
 
 /** The widths the build engine prepares below an image's own width (media recipe v2), plus the original. */

@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import type { Media } from '@typeroll/shared';
 import MediaDetail from './MediaDetail';
 import { filterMedia, mediaKind, MediaKindFilter, MediaThumb, mediaThumbStyles, type MediaFilter } from './MediaThumb';
+import { publicMediaUrl } from '../lib/media/presentation';
+import { finalizedMediaRecord } from '../lib/media/client-upload';
 import { finalizeUpload } from '../lib/media/client-upload';
 
 interface UploadState {
@@ -146,12 +148,12 @@ export default function MediaLibrary({ siteId, initialItems, selectable, onSelec
 
   return (
     <div className="media">
-      {preparation && (
+      {preparation && filter !== 'pdf' && (
         <div className="media__alert" role="status" style={{ alignItems: 'center', flexWrap: 'wrap' }}>
           <div style={{ flex: '1 1 220px', minWidth: 0 }}>
             <strong>{preparation.state === 'complete' ? 'Images prepared' : preparation.state === 'failed' ? 'Image preparation needs attention' : preparation.state === 'waiting' ? 'Image preparation is waiting for setup' : 'Preparing images in the background'}</strong>
             <div className="text-sm">{preparation.error || (preparation.state === 'complete' ? 'Prepared variants will be reused when you publish.' : `${preparation.completed} of ${preparation.total} files ready. You can keep editing or close this page.`)}</div>
-            <div className="text-sm muted">Originals and prepared drafts remain private until publication.</div>
+            <div className="text-sm muted">This status applies to image variants only. PDFs can be published individually from their details, without image preparation.</div>
           </div>
           {preparation.state === 'failed' && <button type="button" className="btn btn--secondary" onClick={retryPreparation}>Retry preparation</button>}
           {preparation.state === 'waiting' && <a href="/app/settings/publishing">Open Publishing</a>}
@@ -218,7 +220,7 @@ export default function MediaLibrary({ siteId, initialItems, selectable, onSelec
                 )}
               </div>
               <div className="media__upload-status">
-                {u.error ? '⚠' : u.progress === 100 ? '✓' : `${Math.round(u.progress)}%`}
+                {u.error ? '⚠' : u.cdnUrl ? '✓' : u.progress >= 100 ? 'Verifying upload…' : `${Math.round(u.progress)}%`}
               </div>
               {u.error && (
                 <button
@@ -269,7 +271,7 @@ export default function MediaLibrary({ siteId, initialItems, selectable, onSelec
                 <div className="text-sm" title={m.filename} style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.filename}</div>
                 {m.demo && <span className="media__demo" title="Demo content from a package: replace it before the site is published.">Demo</span>}
                 <div className="row" style={{ gap: 4, marginTop: 4 }}>
-                  <button className="btn btn--ghost btn--sm" onClick={() => copy(m.cdn_url)} title="Copy URL">📋</button>
+                  <button className="btn btn--ghost btn--sm" onClick={() => publicMediaUrl(m) ? copy(publicMediaUrl(m)!) : setActiveId(m.id)} title={publicMediaUrl(m) ? "Copy public URL" : "View file details"} aria-label={publicMediaUrl(m) ? `Copy public URL for ${m.filename}` : `View details for ${m.filename}`}>📋</button>
                   {selectable ? (
                     <button className="btn btn--sm" onClick={() => onSelect?.(m)}>Select</button>
                   ) : (
@@ -346,17 +348,8 @@ async function uploadOne(
   //    deleted again and its reason shown in the upload list.
   await finalizeUpload(siteId, presignData);
 
-  // 4. The upload-url endpoint already pre-registered a media doc. We don't
-  // get its id back from the signed-URL call (by design — keeps the surface
-  // tiny). Build a local Media record for the optimistic UI.
-  return {
-    id: `local-${Date.now()}`,
-    filename: file.name,
-    cdn_url: presignData.cdnUrl,
-    mime_type: file.type,
-    size_bytes: file.size,
-    created_at: new Date().toISOString(),
-  };
+  // Use the real, finalized record; a synthetic id makes details/save/delete return 404.
+  return finalizedMediaRecord(siteId, presignData);
 }
 
 const styles = `

@@ -980,6 +980,10 @@ export interface Media {
   source_aliases?: string[];
   /** Absolute URL the latest successful main publication serves the file at; null when it published no reference to it. */
   published_url?: string | null;
+  /** Explicit PDF publication; independent of the latest website publication. */
+  file_publication?: { state: 'pending' | 'public'; url: string; key: string; sha256: string; verified_at: string | null };
+  /** Internal exclusion between standalone publication and file removal. */
+  file_operation?: { lease: string; until: number } | null;
   /** Path of `published_url` on its host (the website host, or the media host when media is served from one). */
   published_path?: string | null;
   migration_source?: { provider: 'draft_r2' | 'legacy_r2'; account_id: string; bucket: string; key: string };

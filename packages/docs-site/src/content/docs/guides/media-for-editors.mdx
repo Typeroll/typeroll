@@ -22,6 +22,42 @@ offers every kind.
   [file names and types](../../tools/media/#file-names-and-types).
 - **Size:** up to 25 MB per file. Compress a long video first.
 
+## Publish a PDF and share its link
+
+Available from **Core 0.3.44** (MCP **0.45.147**). Cloud needs the matching
+platform release; self-hosted installations need to update Core.
+
+1. Upload the PDF and wait for upload verification to finish.
+2. Open its details and choose **Publish PDF**. This makes the file public;
+   anyone with the resulting link can read it without signing in.
+3. After Typeroll verifies the public file, choose **Copy public URL**.
+   Use that exact address in email, printed material or links.
+
+This copies the PDF to your organization's public R2 storage. It does **not**
+build the website, start image preparation, or need GitHub/a build engine.
+An organization media domain must be connected in **Publishing → Domains**,
+with private and public R2 storage ready. Cloud and self-hosted installations
+use the same organization connection. The file limit is 25 MB.
+
+Uploading alone keeps the original **Private**. **Open private preview** is
+for signed-in site members; its `/api/sites/…/content` address is not a sharing
+link. The image-preparation notice concerns image variants, not PDFs.
+
+Public addresses use the configured media domain, an anonymous site namespace,
+and a content-based filename. Renaming the file's display name or publishing
+the website again does not change an individually published PDF's link.
+Uploading a new version creates a new file and address; existing links continue
+to show the old file until it is deleted. Keep this in mind for printed links.
+
+If verification fails, the copy may already exist publicly, but Typeroll does
+not offer an unverified sharing link. Check the media domain and retry
+**Publish PDF** on the same item; no re-upload or website build is needed.
+Deleting the file also removes its public copies and requests cache removal;
+any incomplete removal is reported for retry.
+
+Agents use [`publish_media_file`](../../tools/media/) after uploading and
+finalizing, with the owner's authorization to make the PDF public.
+
 ## Find a file
 
 The library and the picker show a thumbnail of every file: the image, a frame

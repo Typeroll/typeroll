@@ -173,7 +173,7 @@ export async function runPendingMediaPreparation(org?: string): Promise<boolean>
       // An engine that must be updated before it can build waits for that update
       // (the next publication applies it with auto-update on) instead of failing rounds.
       if (engine?.status === 'ready' && !engineRunsCurrentRuntime(engine)) {
-        await update({ state: 'waiting', next_at: Date.now() + 60000, error: 'Update the build engine in Publishing → Builds (the next publication does it when automatic updates are on) to prepare images automatically.' });
+        await update({ state: 'waiting', next_at: Date.now() + 60000, error: 'Background image preparation needs a compatible build engine, even when website builds are ready. Update the build engine explicitly in Publishing → Builds. PDF publication does not use this engine.' });
         continue;
       }
       if (!engine || !engine.media_preparation || engine.status !== 'ready' || !connection.media_ready || !connection.cloudflare?.public_bucket) {
