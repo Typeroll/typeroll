@@ -65,7 +65,7 @@ const ALL_SECRETS = new Set(ROLES.flatMap(role => [...SECRETS[role].required, ..
 
 // Variables the profile sets itself; `vars` in the config cannot replace them.
 const RESERVED_VARS = new Set([
-  'CLOUDFLARE_ACCOUNT_ID', 'FORMS_PUBLIC_URL', 'PORTAL_PUBLIC_URL', 'R2_ACCOUNT_ID', 'R2_BUCKET', 'R2_PRIVATE_BUCKET',
+  'PREVIEW_ORIGIN_TEMPLATE', 'CLOUDFLARE_ACCOUNT_ID', 'FORMS_PUBLIC_URL', 'PORTAL_PUBLIC_URL', 'R2_ACCOUNT_ID', 'R2_BUCKET', 'R2_PRIVATE_BUCKET',
   'R2_PUBLIC_BASE_URL', 'SERVICE_ROLE', 'SITES_BASE_DOMAIN', 'STORE_JURISDICTION', 'TYPEROLL_BUNDLE_DIGEST',
   'TYPEROLL_RUNTIME', 'TYPEROLL_SCHEDULER', 'TYPEROLL_SOURCE_SHA', 'TYPEROLL_STORE_BOOTSTRAP',
 ]);
@@ -103,7 +103,7 @@ export function validateSelfHostConfig(raw, { defaultCoreVersion = SELF_HOST_COR
   const check = (condition, message) => { if (!condition) errors.push(message); };
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new SelfHostError('The self-host configuration must be a JSON object');
   const known = new Set(['$schema', 'account_id', 'core_version', 'bundle_sha256', 'name_prefix', 'portal_host', 'forms_host',
-    'workers_subdomain', 'buckets', 'media_public_url', 'sites_base_domain', 'logpush', 'vars']);
+    'preview_domain', 'preview_zone_id', 'workers_subdomain', 'buckets', 'media_public_url', 'sites_base_domain', 'logpush', 'vars']);
   for (const key of Object.keys(raw)) check(known.has(key), `unknown setting ${key}`);
   check(ACCOUNT_ID.test(raw.account_id ?? ''), 'account_id must be a 32-character Cloudflare account ID');
   const coreVersion = raw.core_version ?? defaultCoreVersion;
@@ -117,6 +117,16 @@ export function validateSelfHostConfig(raw, { defaultCoreVersion = SELF_HOST_COR
   check(Boolean(raw.portal_host) === Boolean(raw.forms_host), 'set both portal_host and forms_host, or neither (workers.dev)');
   check(raw.portal_host === undefined || raw.portal_host !== raw.forms_host, 'Forms needs its own hostname');
   check(raw.portal_host || /^[a-z0-9-]+$/.test(raw.workers_subdomain ?? ''), 'without custom hostnames, workers_subdomain (your <name>.workers.dev) is required');
+  const preview = raw.preview_domain ? { domain: raw.preview_domain, zoneId: raw.preview_zone_id } : null;
+  check(Boolean(raw.preview_domain) === Boolean(raw.preview_zone_id), 'set both preview_domain and preview_zone_id');
+  if (preview) {
+    const version = (coreVersion ?? '').split('.').map(Number);
+    check(version.length === 3 && version.every(Number.isInteger) && (version[0] > 0 || version[1] > 3 || (version[1] === 3 && version[2] >= 41)), 'Isolated previews require Core 0.3.41 or later');
+    check(HOSTNAME.test(preview.domain), 'preview_domain must be a lowercase hostname');
+    check(ACCOUNT_ID.test(preview.zoneId ?? ''), 'preview_zone_id must be a Cloudflare zone ID');
+    check(Boolean(raw.portal_host), 'isolated previews require portal_host');
+    check(preview.domain.split('.').slice(-2).join('.') !== (raw.portal_host ?? '').split('.').slice(-2).join('.'), 'Preview and portal must use separate cookie domains');
+  }
   const buckets = {
     media: raw.buckets?.media ?? `${prefix}-media`,
     private_drafts: raw.buckets?.private_drafts ?? `${prefix}-private-drafts`,
@@ -139,6 +149,7 @@ export function validateSelfHostConfig(raw, { defaultCoreVersion = SELF_HOST_COR
   if (errors.length) throw new SelfHostError(`The self-host configuration is invalid:\n- ${errors.join('\n- ')}`);
   return {
     accountId: raw.account_id,
+    preview,
     coreVersion,
     bundleSha256: raw.bundle_sha256 ?? null,
     scripts: { portal: `${prefix}-portal`, forms: `${prefix}-forms` },
@@ -298,6 +309,12 @@ export function deriveSelfHostConfigs({ config, generated, release, digest }) {
     R2_PUBLIC_BASE_URL: config.mediaPublicUrl,
     ...(config.sitesBaseDomain ? { SITES_BASE_DOMAIN: config.sitesBaseDomain } : {}),
   };
+  delete portal.vars.PREVIEW_ORIGIN_TEMPLATE;
+  if (config.preview) {
+    portal.vars.PREVIEW_ORIGIN_TEMPLATE = `https://{scope}.${config.preview.domain}`;
+    portal.routes.push({ pattern: `*.${config.preview.domain}/*`, zone_id: config.preview.zoneId });
+    if (portal.assets) portal.assets.run_worker_first = true;
+  }
   portal.r2_buckets = r2;
   portal.services = serviceBindings(generated, config.scripts.portal);
   portal.triggers = { crons: [...contract.crons] };
@@ -306,6 +323,7 @@ export function deriveSelfHostConfigs({ config, generated, release, digest }) {
   // objects through script_name. It owns no migrations, crons or buckets.
   const forms = baseFrom(generated, config, 'forms', origins);
   forms.vars = { ...generated.vars, ...config.vars, ...release_vars, SERVICE_ROLE: 'forms' };
+  delete forms.vars.PREVIEW_ORIGIN_TEMPLATE;
   forms.durable_objects = { bindings: (generated.durable_objects?.bindings ?? []).map(binding => ({ ...binding, script_name: config.scripts.portal })) };
   delete forms.migrations;
   forms.r2_buckets = [];

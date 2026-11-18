@@ -1,3 +1,4 @@
+import { isPreviewHost, matchesPreviewOrigin } from '../../../../lib/preview-origin';
 import type { APIRoute } from 'astro';
 import { verifyActivePreviewToken } from '../../../../lib/preview-signing';
 import { privateMediaReadUrl } from '../../../../lib/publishing/media-storage';
@@ -10,7 +11,7 @@ import { connectionFailure } from '../../../../lib/publishing/http';
 export const GET: APIRoute = async ({ request, params }) => {
   const query = new URL(request.url).searchParams;
   const ticket = await verifyActivePreviewToken(query.get('token'));
-  if (!ticket || ticket.site_id !== params.siteId) return new Response('Preview expired or unavailable.', { status: 404, headers: { 'Cache-Control': 'no-store' } });
+  if (!ticket || ticket.site_id !== params.siteId || (isPreviewHost(new URL(request.url)) && !matchesPreviewOrigin(request, ticket))) return new Response('Preview expired or unavailable.', { status: 404, headers: { 'Cache-Control': 'no-store' } });
   try {
     const remaining = Math.floor(ticket.exp - Date.now() / 1000);
     const cacheSeconds = Math.max(0, Math.min(3600, remaining - 120));

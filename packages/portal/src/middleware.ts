@@ -1,3 +1,4 @@
+import { isPreviewHost, previewHostAllows, previewOriginConfig } from './lib/preview-origin';
 import { withAccessRequest, OrganizationAccessError } from './lib/organization-access';
 import { requireCurrentDataSchema } from './lib/data-schema';
 import { defineMiddleware } from 'astro:middleware';
@@ -79,7 +80,7 @@ const SELF_FRAMED_PATHS = [
 ];
 const ROUTE_OWNED_FRAMING_PREFIXES = ['/api/forms/', '/api/extensions/'];
 
-function applyFramingPolicy(pathname: string, response: Response): Response {
+function applyFramingPolicy(pathname: string, response: Response, isolatedHost = false): Response {
   if (ROUTE_OWNED_FRAMING_PREFIXES.some((prefix) => pathname.startsWith(prefix))) return response;
   if (!/^\s*text\/html\b/i.test(response.headers.get('content-type') ?? '')) return response;
   const selfFramed = SELF_FRAMED_PATHS.some((pattern) => pattern.test(pathname));
@@ -88,8 +89,8 @@ function applyFramingPolicy(pathname: string, response: Response): Response {
   if (!missingFrameAncestors && !missingFrameOptions) return response;
   const apply = (headers: Headers) => {
     // A second policy is enforced alongside any existing one (e.g. a preview's sandbox).
-    if (missingFrameAncestors) headers.append('Content-Security-Policy', selfFramed ? "frame-ancestors 'self'" : "frame-ancestors 'none'");
-    if (missingFrameOptions) headers.set('X-Frame-Options', selfFramed ? 'SAMEORIGIN' : 'DENY');
+    if (missingFrameAncestors) headers.append('Content-Security-Policy', isolatedHost ? `frame-ancestors 'self' ${previewOriginConfig()!.portal}` : selfFramed ? "frame-ancestors 'self'" : "frame-ancestors 'none'");
+    if (missingFrameOptions && !isolatedHost) headers.set('X-Frame-Options', selfFramed ? 'SAMEORIGIN' : 'DENY');
   };
   try {
     apply(response.headers);
@@ -103,6 +104,7 @@ function applyFramingPolicy(pathname: string, response: Response): Response {
 }
 
 const handleRequest = (async (context, next) => {
+  if (isPreviewHost(context.url) && !previewHostAllows(context.request)) return new Response('Not found', { status: 404, headers: { 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex, nofollow' } });
   if (!['/api/healthz', '/api/version'].includes(context.url.pathname)) {
     try { await measureRequestStep('schema', () => requireCurrentDataSchema()); }
     catch {
@@ -145,7 +147,17 @@ const handleRequest = (async (context, next) => {
 
   }
 
-  try { return applyFramingPolicy(pathname, await withAccessRequest(context.request, next)); }
+  try {
+    const response = applyFramingPolicy(pathname, await withAccessRequest(context.request, next), isPreviewHost(context.url));
+    if (!isPreviewHost(context.url)) return response;
+    // Preview capabilities are carried in signed URLs, never session cookies.
+    const isolated = new Response(response.body, response);
+    isolated.headers.delete('Set-Cookie');
+    isolated.headers.set('Cache-Control', 'no-store');
+    isolated.headers.set('Referrer-Policy', 'no-referrer');
+    isolated.headers.set('X-Robots-Tag', 'noindex, nofollow');
+    return isolated;
+  }
   catch (error) {
     if (error instanceof OrganizationAccessError) return error.response();
     if (context.url.pathname.startsWith('/api/') && error instanceof StorageDocumentError) {

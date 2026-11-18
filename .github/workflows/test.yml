@@ -156,6 +156,15 @@ jobs:
         run: npm run test:e2e:install --workspace=@typeroll/portal
       - name: Run Playwright
         run: npm run test:e2e --workspace=@typeroll/portal -- --shard=${{ matrix.shard }}/4
+      - name: Check isolated preview CSP in all browsers
+        if: matrix.shard == 1
+        run: npm run test:layout --workspace=@typeroll/portal -- preview-origin.spec.ts
+      - name: Check isolated preview on the built portal
+        if: matrix.shard == 1
+        env:
+          TYPEROLL_E2E_ISOLATED_PREVIEW: 'true'
+          TYPEROLL_E2E_SKIP_BUILD: 'true'
+        run: npm run test:e2e --workspace=@typeroll/portal -- isolated-preview.spec.ts --project=chromium
       - name: Upload Playwright report on failure
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

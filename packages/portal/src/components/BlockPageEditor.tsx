@@ -32,7 +32,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { useBlockDnd, type CanvasGeometry, type DropTarget } from './block-dnd';
 import { createBlockHistory } from './block-history';
 import ReviewChanges from './ReviewChanges';
-import { EDITOR_CANVAS_FRAME_SANDBOX, isEditorCanvasMessage, useEditorCanvasId } from '../lib/editor-canvas-frame';
+import { editorCanvasSandbox, isEditorCanvasMessage, useEditorCanvasId } from '../lib/editor-canvas-frame';
 import {
   Monitor, Tablet, Smartphone, ChevronRight, ChevronDown,
   Trash2, Copy, GripVertical, Plus, Square, Columns, Type, Heading, Image as ImageIcon, MousePointerClick,
@@ -73,6 +73,7 @@ interface Props {
   /** Unsaved edits, offered for recovery before the editor mounts. */
   workingCopy?: WorkingCopy | null;
   previewUrl: string;
+  previewOrigin?: string | null;
   /** Permalink on the deployed site (null when the site has no live base). */
   liveUrl?: string | null;
   lastDeployedAt: string | null;
@@ -138,7 +139,7 @@ export default function BlockPageEditor(props: Props) {
   </PageDraftRecovery>;
 }
 
-function BlockPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl, lastDeployedAt, contentType, responsiveBreakpoints, siteStyles, renderVersion, siteFonts, globalBlocks: initialGlobalBlocks = [], blockTemplates: initialTemplates = [], canManageBlockTypes = false, structureLocked = false }: Props) {
+function BlockPageEditorSession({ siteId, page, workingCopy, previewUrl, previewOrigin, liveUrl, lastDeployedAt, contentType, responsiveBreakpoints, siteStyles, renderVersion, siteFonts, globalBlocks: initialGlobalBlocks = [], blockTemplates: initialTemplates = [], canManageBlockTypes = false, structureLocked = false }: Props) {
   const [globalBlocks, setGlobalBlocks] = useState(initialGlobalBlocks);
   const [blockTemplates, setBlockTemplates] = useState(initialTemplates);
   // The organization collection; null when this person may not use it.
@@ -199,7 +200,7 @@ function BlockPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl
     if (!canvasId) return;
     iframeRef.current?.contentWindow?.postMessage({
       channel: 'typeroll.editor-canvas', version: 1, canvas_id: canvasId, ...command,
-    }, '*');
+    }, previewOrigin || '*');
   }
   // Live preview zoom, read by the canvas hit-test to map on-screen pointer
   // coords into the (unscaled) iframe coordinate space.
@@ -798,7 +799,7 @@ function BlockPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl
       return ids.find((id): id is string => typeof id === 'string' && Boolean(findBlock(draftRef.current.blocks ?? [], id))) ?? null;
     };
     const receive = (event: MessageEvent) => {
-      if (!isEditorCanvasMessage(event, ifr, canvasId)) return;
+      if (!isEditorCanvasMessage(event, ifr, canvasId, previewOrigin)) return;
       const data = event.data;
       if (data.type === 'history' && (data.direction === 'undo' || data.direction === 'redo')) {
         void shortcutsRef.current.history(data.direction);
@@ -845,7 +846,7 @@ function BlockPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl
   // Keep the canvas outline in sync when selection changes from the tree.
   useEffect(() => {
     postCanvasCommand({ action: 'highlight', selected_id: selectedId, hover_id: hoverIdRef.current });
-  }, [selectedId, canvasId]);
+  }, [selectedId, canvasId, previewOrigin]);
 
   const metaSaveTimer = useRef<number | null>(null);
   const pendingMeta = useRef<Record<string, unknown>>({});
@@ -1127,6 +1128,7 @@ function BlockPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl
               siteId={siteId}
               pageId={page.id}
               changesUrl={`${resourceUrl}/changes`}
+              previewOrigin={previewOrigin}
               previewUrl={previewUrl}
               onClose={() => setReviewOpen(false)}
             />
@@ -1219,7 +1221,7 @@ function BlockPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl
                 ref={iframeRef}
                 src={previewUrl + (previewUrl.includes('?') ? '&' : '?') + `embed=1&interactive=1&canvas=${encodeURIComponent(canvasId)}`}
                 title="Preview"
-                sandbox={EDITOR_CANVAS_FRAME_SANDBOX}
+                sandbox={editorCanvasSandbox(previewOrigin)}
                 aria-busy={canvasLoading}
                 style={{ width: '100%', height: '100%', border: 'none', pointerEvents: canvasLoading ? 'none' : undefined }}
               />}

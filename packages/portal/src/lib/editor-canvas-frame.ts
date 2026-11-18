@@ -1,19 +1,15 @@
-// Parent-side helpers for the opaque-origin editor canvas (see
-// editor-canvas-bridge.ts for the script that runs inside the frame).
-//
-// A canvas frame renders customer content. The parent accepts its messages
-// only when all of these hold:
-//   - they come from that frame's own window,
-//   - from an opaque origin ('null'): the preview responses and the frame's
-//     sandbox attribute both drop same-origin, so a frame that navigated to
-//     some real origin no longer counts as the canvas,
-//   - for the protocol version and this mount's random canvas id.
+// Preview messages are accepted only from the mounted frame, its exact configured
+// origin (or the opaque fallback), and this mount's random protocol identifier.
 import { useEffect, useState } from 'react';
 import { EDITOR_CANVAS_PROTOCOL_VERSION } from './editor-canvas-bridge';
 import { PREVIEW_SANDBOX } from './preview-headers';
 
-/** Sandbox attribute for canvas iframes: the same flags the preview responses send, never allow-same-origin. */
+/** Sandbox attribute for canvas iframes: the opaque fallback used when no separate preview origin is configured. */
 export const EDITOR_CANVAS_FRAME_SANDBOX = PREVIEW_SANDBOX.replace(/^sandbox\s+/, '');
+
+export function editorCanvasSandbox(origin?: string | null): string {
+  return EDITOR_CANVAS_FRAME_SANDBOX + (origin ? ' allow-same-origin' : '');
+}
 
 /** Unguessable per-mount canvas id, valid for the preview routes' `canvas` parameter. */
 export function createEditorCanvasId(prefix: string): string {
@@ -36,8 +32,9 @@ export function isEditorCanvasMessage(
   event: MessageEvent,
   frame: HTMLIFrameElement | null | undefined,
   canvasId: string | null,
+  previewOrigin?: string | null,
 ): event is MessageEvent<Record<string, unknown>> {
-  if (!canvasId || !frame?.contentWindow || event.source !== frame.contentWindow || event.origin !== 'null') return false;
+  if (!canvasId || !frame?.contentWindow || event.source !== frame.contentWindow || event.origin !== (previewOrigin || 'null')) return false;
   const data = event.data as Record<string, unknown> | null;
   return !!data && typeof data === 'object'
     && data.channel === 'typeroll.editor-canvas'

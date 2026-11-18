@@ -47,6 +47,8 @@ export interface PreviewTicket {
    *  compared only when they show the same revision. */
   cr?: string;
   id?: string;
+  /** Session-authorized editor surface; never accepted by write APIs. */
+  canvas?: { page_id?: string };
 }
 
 function getSecret(): string {
@@ -73,10 +75,12 @@ export function signPreviewTicket(args: {
   includeWorkingCopies?: boolean;
   renderVersion?: number;
   contentRevision?: string;
+  canvas?: { page_id?: string };
 }): { token: string; expiresAt: string } {
   const ttl = Math.max(60, Math.min(MAX_TTL_SECONDS, args.ttlSeconds ?? DEFAULT_TTL_SECONDS));
   const ticket: PreviewTicket = {
     id: crypto.randomUUID(),
+    ...(args.canvas ? { canvas: args.canvas } : {}),
     org_id: args.orgId,
     site_id: args.siteId,
     version_id: args.versionId,

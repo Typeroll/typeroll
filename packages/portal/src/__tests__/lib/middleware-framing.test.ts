@@ -70,3 +70,29 @@ describe('portal anti-framing headers', () => {
     expect(response.headers.get('x-frame-options')).toBe('DENY');
   });
 });
+
+describe('reserved preview host', () => {
+  it('rejects authentication and write routes before handlers run', async () => {
+    vi.stubEnv('PREVIEW_ORIGIN_TEMPLATE', 'https://{scope}.preview-example.net');
+    vi.stubEnv('PORTAL_PUBLIC_URL', 'https://cms.example.test');
+    try {
+      for (const path of ['/api/auth/get-session', '/api/account/api-tokens', '/app', '/api/internal-admin/sites']) {
+        const next = vi.fn(() => html());
+        const url = new URL('https://unknown.preview-example.net' + path);
+        const response = await onRequest({ url, request: new Request(url), locals: {} } as never, next as never) as Response;
+        expect(response.status).toBe(404);
+        expect(next).not.toHaveBeenCalled();
+      }
+      const response = await respond('https://unknown.preview-example.net/preview/s1/', html({
+        'Content-Security-Policy': "sandbox allow-scripts allow-same-origin; frame-ancestors https://cms.example.test",
+        'Set-Cookie': 'unexpected=value',
+      }));
+      expect(response.headers.get('Set-Cookie')).toBeNull();
+      expect(response.headers.get('X-Frame-Options')).toBeNull();
+      expect(response.headers.get('Cache-Control')).toBe('no-store');
+      const expired = await respond('https://unknown.preview-example.net/preview/s1/', html({ 'Content-Security-Policy': 'sandbox allow-scripts allow-forms allow-popups' }));
+      expect(expired.headers.get('Content-Security-Policy')).toContain("frame-ancestors 'self' https://cms.example.test");
+      expect(expired.headers.get('Content-Security-Policy')).not.toContain('allow-same-origin');
+    } finally { vi.unstubAllEnvs(); }
+  });
+});

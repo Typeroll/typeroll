@@ -16,7 +16,7 @@ import PublishMenu, { PAGE_STATUS_OPTIONS } from './PublishMenu';
 import ChatInterface from './ChatInterface';
 import ContentModeSwitcher from './ContentModeSwitcher';
 import TemplatePicker from './TemplatePicker';
-import { EDITOR_CANVAS_FRAME_SANDBOX, isEditorCanvasMessage, useEditorCanvasId } from '../lib/editor-canvas-frame';
+import { editorCanvasSandbox, isEditorCanvasMessage, useEditorCanvasId } from '../lib/editor-canvas-frame';
 
 // Inline parser — keeps this file client-bundleable (the server-side
 // partials-usage module imports vstore, which can't run in the browser).
@@ -38,6 +38,7 @@ interface Props {
   /** Unsaved edits, offered for recovery before the editor mounts. */
   workingCopy?: WorkingCopy | null;
   previewUrl: string;
+  previewOrigin?: string | null;
   /** Permalink on the deployed site (null when the site has no live base). */
   liveUrl?: string | null;
   /** ISO timestamp of this version's last successful deploy (null if never). */
@@ -57,7 +58,7 @@ export default function HtmlPageEditor(props: Props) {
   </PageDraftRecovery>;
 }
 
-function HtmlPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl, lastDeployedAt, aiChatEnabled = false, contentTypeHasExcerpt = false }: Props) {
+function HtmlPageEditorSession({ siteId, page, workingCopy, previewUrl, previewOrigin, liveUrl, lastDeployedAt, aiChatEnabled = false, contentTypeHasExcerpt = false }: Props) {
   // Edits autosave to a server-side working copy; the canonical page only
   // changes on the deliberate Save (or a status change) in the Publish menu.
   const [draft, setDraft] = useState<Page>({ ...page, ...(workingCopy?.fields ?? {}) } as Page);
@@ -79,7 +80,7 @@ function HtmlPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl,
     if (!canvasId) return;
     iframeRef.current?.contentWindow?.postMessage({
       channel: 'typeroll.editor-canvas', version: 1, canvas_id: canvasId, ...command,
-    }, '*');
+    }, previewOrigin || '*');
   };
   const previewRefresh = usePreviewRefresh(refreshCanvas);
   function reloadPreview(): void { previewRefresh.request(); }
@@ -103,7 +104,7 @@ function HtmlPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl,
   useEffect(() => setOrigin(window.location.origin), []);
   useEffect(() => {
     const receive = (event: MessageEvent) => {
-      if (!isEditorCanvasMessage(event, iframeRef.current, canvasId)) return;
+      if (!isEditorCanvasMessage(event, iframeRef.current, canvasId, previewOrigin)) return;
       const data = event.data;
       if (data.type === 'scroll' && typeof data.scroll_y === 'number' && Number.isFinite(data.scroll_y)) canvasScrollRef.current = data.scroll_y;
       if (data.type === 'ready' && restoreCanvasScrollRef.current !== null) {
@@ -113,7 +114,7 @@ function HtmlPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl,
     };
     window.addEventListener('message', receive);
     return () => window.removeEventListener('message', receive);
-  }, [canvasId]);
+  }, [canvasId, previewOrigin]);
   const absolutePreviewUrl =
     origin && previewUrl.startsWith('/') ? `${origin}${previewUrl}` : previewUrl;
 
@@ -643,7 +644,7 @@ function HtmlPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl,
                 key={canvasRevision}
               ref={iframeRef}
               src={previewUrl + (previewUrl.includes('?') ? '&' : '?') + `embed=1&canvas=${encodeURIComponent(canvasId)}`}
-              sandbox={EDITOR_CANVAS_FRAME_SANDBOX}
+              sandbox={editorCanvasSandbox(previewOrigin)}
               style={{ width: deviceWidths[device] }}
               title="Page preview"
             />}

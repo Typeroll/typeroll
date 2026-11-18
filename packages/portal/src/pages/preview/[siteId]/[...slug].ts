@@ -1,3 +1,4 @@
+import { isolatedPreviewOrigin, isPreviewHost, matchesPreviewOrigin, realOriginPreviewHeaders, previewOriginConfig } from '../../../lib/preview-origin';
 import { authorizeRequestTiming, measureRequestStep } from '../../../lib/runtime/request-timing';
 // GET /preview/{siteId}/{...slug}?t=<signed-token>
 //
@@ -11,7 +12,7 @@ import { authorizeRequestTiming, measureRequestStep } from '../../../lib/runtime
 // page.
 
 import type { APIRoute } from 'astro';
-import { renderPreviewBySlug } from '../../../lib/render-preview';
+import { renderPreview, renderPreviewBySlug, type PreviewOptions } from '../../../lib/render-preview';
 import { previewDerivation } from '../../../lib/publishing/preview-derivation';
 import { verifyActivePreviewToken } from '../../../lib/preview-signing';
 import { rewritePreviewMediaUrls, withPreviewResponsiveImages } from '../../../lib/preview-media';
@@ -41,6 +42,17 @@ export const GET: APIRoute = async ({ params, request }) => {
   const ticket = await verifyActivePreviewToken(token);
   if (!ticket) return plain('<h1>Invalid or expired preview link</h1>', 401);
   if (ticket.site_id !== siteId) return plain('<h1>Invalid preview link</h1>', 401);
+  const realOrigin = matchesPreviewOrigin(request, ticket);
+  if (isPreviewHost(url) && !realOrigin) return plain('<h1>Invalid preview origin</h1>', 403);
+  const targetOrigin = isolatedPreviewOrigin(ticket);
+  if (targetOrigin && !realOrigin) {
+    const target = new URL(url.pathname + url.search, targetOrigin);
+    return new Response(null, { status: 302, headers: { Location: target.href, 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' } });
+  }
+  const editor = realOrigin && !!ticket.canvas && url.searchParams.get('embed') === '1';
+  const canvasId = editor && /^[A-Za-z0-9_-]{16,128}$/.test(url.searchParams.get('canvas') ?? '') ? url.searchParams.get('canvas')! : undefined;
+  const interactive = editor && url.searchParams.get('interactive') === '1';
+  const parentOrigin = editor ? previewOriginConfig()!.portal : publicRequestOrigin(request);
   authorizeRequestTiming();
 
   // Rate-limit per token so a runaway scraper can't pull a snapshot loop.
@@ -69,17 +81,17 @@ export const GET: APIRoute = async ({ params, request }) => {
     return new Response(derivation.data, { status: 200, headers });
   }
 
-  // The outer page contains no customer content. It can therefore retain the
-  // portal origin safely and own tab-scoped Extension state, while all
-  // customer HTML remains in the opaque child response below.
+  // The shell owns navigation and tab-scoped Extension state. Customer HTML
+  // runs on the isolated preview origin, or in an opaque fallback child.
   const isFrame = url.searchParams.get('frame') === '1';
   // ?consent=all|necessary answers the cookie banner for this review session;
   // the sandbox keeps no cookies, so the shell carries it to every page.
   const consentParam = url.searchParams.get('consent');
   const consentChoice = consentParam === 'all' || consentParam === 'necessary' ? consentParam : undefined;
-  if (!isFrame) {
+  if (!isFrame && !editor) {
     return new Response(buildExtensionPreviewShell({
       pageUrl: request.url,
+      realOrigin,
       siteId,
       bridgeId: previewBridgeId(`/preview/${siteId}`, token!),
       rootPath: `/preview/${siteId}`,
@@ -88,12 +100,12 @@ export const GET: APIRoute = async ({ params, request }) => {
     }), { status: 200, headers: extensionPreviewShellHeaders() });
   }
   const bridgeId = url.searchParams.get('bridge') ?? '';
-  if (!/^[0-9a-f-]{36}$/i.test(bridgeId)) return plain('<h1>Invalid preview frame</h1>', 400);
+  if (!editor && !/^[0-9a-f-]{36}$/i.test(bridgeId)) return plain('<h1>Invalid preview frame</h1>', 400);
 
   // Link rewriting: keep clicks inside /preview/{siteId}/... AND carry the
   // same ?t= so the agent's browser hops between pages without re-auth.
   const browseRoot = `/preview/${siteId}`;
-  const embedSuffix = `?t=${encodeURIComponent(token!)}${consentChoice ? `&consent=${consentChoice}` : ''}`;
+  const embedSuffix = `?t=${encodeURIComponent(token!)}${consentChoice ? `&consent=${consentChoice}` : ''}${editor ? `&embed=1${canvasId ? `&canvas=${canvasId}` : ''}${interactive ? '&interactive=1' : ''}${url.searchParams.get('saved') === '1' ? '&saved=1' : ''}` : ''}`;
 
   // Derived data comes from the version's accepted, published content, as its
   // next publication would see it, never from working copies or proposals.
@@ -102,31 +114,28 @@ export const GET: APIRoute = async ({ params, request }) => {
   const derivedDataUrl = derivation.data_digest
     ? `${publicRequestOrigin(request)}${browseRoot}/_typeroll/derived/${derivation.data_digest}.json?t=${encodeURIComponent(token!)}` : '';
 
-  const html = await renderPreviewBySlug(
-    ticket.org_id,
-    ticket.site_id,
-    slugParts,
-    ticket.version_id,
-    {
+  const options: PreviewOptions = {
     sharedMediaToken: token!,
       browseRoot,
       showBanner: false,
       embedSuffix,
       // Only tokens explicitly minted with include_working_copy render
       // unsaved editor edits — the flag is HMAC-signed into the ticket.
-      includeWorkingCopies: ticket.wc === true,
+      includeWorkingCopies: ticket.wc === true && !(editor && url.searchParams.get('saved') === '1'),
+      editorCanvasId: canvasId, editorCanvasParentOrigin: editor ? parentOrigin : undefined,
+      annotate: interactive, editable: interactive,
       // Upgrade previews carry the target render version in the signed ticket.
       ...(typeof ticket.rv === 'number' ? { renderVersion: ticket.rv } : {}),
-      // Safe despite there being no viewer identity to check: this response
-      // carries the opaque-origin sandbox, so its JS has no portal access to
-      // abuse. Keeping scripts on means an agent's preview matches the
-      // deployed site.
-      allowScripts: true,
+      // Standalone previews run site scripts without portal authority. The
+      // editing canvas still omits them to protect its editing bridge.
+      allowScripts: !editor,
       ...(consentChoice ? { consentChoice } : {}),
-      extensionPreviewBridge: { id: bridgeId, parentOrigin: publicRequestOrigin(request) },
+      extensionPreviewBridge: editor ? undefined : { id: bridgeId, parentOrigin },
       ...(derivation.status === 'succeeded' ? { derived: { sources: derivation.derived, dataUrl: derivedDataUrl } } : {}),
-    },
-  );
+    };
+  const html = editor && ticket.canvas?.page_id
+    ? await renderPreview(ticket.org_id, ticket.site_id, ticket.canvas.page_id, ticket.version_id, options)
+    : await renderPreviewBySlug(ticket.org_id, ticket.site_id, slugParts, ticket.version_id, options);
   if (!html) {
     return plain(
       `<!doctype html><meta charset=utf-8><title>Not found</title><body style="font:14px -apple-system;padding:2rem"><h1>No page at /${escapeHtml(raw)}</h1></body>`,
@@ -149,6 +158,7 @@ export const GET: APIRoute = async ({ params, request }) => {
   const body = injectPreviewNotices(html, notices, { id: bridgeId, parentOrigin: publicRequestOrigin(request) });
   // Prepared AVIF/WebP variants, dimensions and loading as on the published site.
   const response = plain(await withPreviewResponsiveImages(rewritePreviewMediaUrls(body, siteId, token!), ticket.org_id, siteId, token!), 200);
+  if (realOrigin) for (const [name, value] of Object.entries(realOriginPreviewHeaders())) response.headers.set(name, value);
   for (const [name, value] of Object.entries(previewStateHeaders(notices))) response.headers.set(name, value);
   return response;
 };
