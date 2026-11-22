@@ -28,5 +28,5 @@ export async function pageFooterSpacingWarnings(
     return out;
   }
   const route = routeKind({ page: { ...page, path: page.path ?? (page.slug ? `/${page.slug}/` : '/') } });
-  return footerSpacingWarnings(applyRouteOverridesToTree(await expand(body), route), page, settings?.styles);
+  return footerSpacingWarnings(applyRouteOverridesToTree(await expand(body), route), page, settings?.styles, settings?.footer_min_spacing);
 }

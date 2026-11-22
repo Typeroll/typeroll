@@ -17,6 +17,7 @@ export function candidateVerificationRetry(job: GitJob, resumed = false) {
 /** No source generation, page build, upload or DNS operation is authorized by this recovery; only path-scoped cache refreshes of the site's own addresses. */
 export async function assertVerificationRetry(org: string, site: string, job: GitJob, resumed = false) {
   const publication = job.git_publication;
+  if (publication?.bulk_redirects?.count && !publication.bulk_activated) throw new ConnectionError('Static redirect overflow has not been activated. Retry the full publication; verification-only recovery cannot change redirect rules.', 409, 'verification_retry_unavailable');
   const failure = resumed ? job.verification_retry?.failure : job.failure;
   const candidate = candidateVerificationRetry(job, resumed);
   if (job.status !== (resumed ? 'running' : 'failed') || job.dry_run || publication?.snapshot_pruned_at || !(candidate || ['publication_observation_timeout', 'publication_cache_refresh_required', 'publication_cache_refresh_external', 'publication_cache_refresh_failed'].includes(failure?.code ?? '')) ||

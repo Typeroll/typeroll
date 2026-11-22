@@ -274,6 +274,7 @@ function packageDesign(settings: SiteSettings): PackageDesign {
     ...(s.typography ? { typography: clone(s.typography as Record<string, unknown>) } : {}),
     ...(s.design_scales ? { design_scales: clone(s.design_scales as Record<string, unknown>) } : {}),
     ...(s.footer_spacing !== undefined ? { footer_spacing: clone(s.footer_spacing) } : {}),
+    ...(s.footer_min_spacing !== undefined ? { footer_min_spacing: clone(s.footer_min_spacing) } : {}),
     ...(s.content_widths ? { content_widths: clone(s.content_widths as Record<string, unknown>) } : {}),
     ...(Object.keys(roles).length ? { fonts: roles as PackageDesign['fonts'] } : {}),
     // A kit or stylesheet is the author's own subscription: only the family names travel.

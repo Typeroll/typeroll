@@ -25,5 +25,5 @@ export async function publicationBuildProgress(org: string, site: string, job: D
     queued_since: task.status === 'queued' ? new Date(task.queued_at ?? task.created_at).toISOString() : null,
     retry_behavior: 'A queued step is normal: the build provider starts it when the account has build capacity, and its working time starts only then. Keep waiting and do not trigger another publication; a new one does not cancel this job and waits behind it. Retry only after a terminal failure.',
     attempt_note: 'attempt counts build runs. Large media sets are prepared in windows of about 12 minutes; each window saves its position and the next run continues from it. media_continuations counts those planned windows; retries counts runs that failed and were started again.',
-    completed: task.media_cursor ?? 0, total: task.media_total ?? 0 };
+    prepared_reused: task.media_reused ?? 0, completed: task.media_cursor ?? 0, total: task.media_total ?? 0 };
 }

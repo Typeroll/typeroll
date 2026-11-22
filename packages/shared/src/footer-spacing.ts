@@ -48,9 +48,10 @@ export function footerSpacingAttributes(block: Block, styles: readonly SiteStyle
 /** Shared by the static layout and preview; no JS, measurement or post-load jump.
  * Unconfigured sites keep byte-for-byte historical spacing. Container default
  * padding is moved to the main's end, rather than added a second time. */
-export function footerSpacingCss(settings: Pick<SiteSettings, 'footer_spacing' | 'responsive_breakpoints' | 'render_version'>, page: Pick<Page, 'footer_spacing'>): string {
+export function footerSpacingCss(settings: Pick<SiteSettings, 'footer_spacing' | 'footer_min_spacing' | 'responsive_breakpoints' | 'render_version'>, page: Pick<Page, 'footer_spacing'>): string {
   const none = page.footer_spacing === 'none';
-  if (!none && (settings.footer_spacing == null || footerSpacingError(settings.footer_spacing))) return '';
+  if (!none && settings.footer_spacing == null && settings.footer_min_spacing == null) return '';
+  if (settings.footer_spacing != null && footerSpacingError(settings.footer_spacing) || settings.footer_min_spacing != null && footerSpacingError(settings.footer_min_spacing)) return '';
   if (none) return platformLayer('content', '.page-content{--page-end-space:0px;padding-block-end:0}', settings.render_version);
   const widths = resolveBreakpointWidths(settings.responsive_breakpoints);
   const rules = BREAKPOINT_ORDER.map((bp, index) => {
@@ -58,11 +59,14 @@ export function footerSpacingCss(settings: Pick<SiteSettings, 'footer_spacing' |
     const last = `:nth-last-child(1 of :not(style,script,template,[hidden],[data-footer-hidden-${bp}]))`;
     const automatic = `${last}:not([data-footer-own-${bp}])`;
     const root = `.page-content--blocks > ${automatic}`;
-    const value = resolveResponsive(settings.footer_spacing!, bp)!;
+    const value = resolveResponsive(settings.footer_spacing ?? 0, bp)!;
     const gap = typeof value === 'number' ? `${value}px` : scaleValue('space', value)!;
-    const css = `.page-content{--page-end-space:0px;padding-block-end:${gap}}` +
-      `.page-content--blocks{padding-block-end:0}` +
-      `.page-content--blocks:has(> ${automatic}){padding-block-end:${gap}}` +
+    const minimum = resolveResponsive(settings.footer_min_spacing ?? 0, bp)!;
+    const floor = typeof minimum === 'number' ? `${minimum}px` : scaleValue('space', minimum)!;
+    const spacing = settings.footer_min_spacing == null ? gap : `max(${gap},${floor})`;
+    const css = `.page-content{--page-end-space:0px;padding-block-end:${spacing}}` +
+      `.page-content--blocks{padding-block-end:${settings.footer_min_spacing == null ? '0' : floor}}` +
+      `.page-content--blocks:has(> ${automatic}){padding-block-end:${spacing}}` +
       `${root}{margin-block-end:0}` +
       `${root}:is([data-block="section"],[data-block="container"],[data-block="semantic-container"],[data-block="hero"]){padding-block-end:0}`;
     return `@media (min-width:${widths[bp]}px)${next ? ` and (max-width:${widths[next] - .02}px)` : ''}{${css}}`;
@@ -73,10 +77,12 @@ export function footerSpacingCss(settings: Pick<SiteSettings, 'footer_spacing' |
 const TEXT_OR_FORM = new Set(['core/text', 'core/prose', 'core/heading', 'core/rich_heading', 'core/list', 'core/form', 'core/navigation_form']);
 /** Conservative warning: known text/form ending with an explicit zero, no
  * positive inner spacing, and no deliberate page-level edge-to-edge choice. */
-export function footerSpacingWarnings(blocks: Block[], page: Pick<Page, 'footer_spacing'>, styles: readonly SiteStyle[] = []): FooterSpacingWarning[] {
+export function footerSpacingWarnings(blocks: Block[], page: Pick<Page, 'footer_spacing'>, styles: readonly SiteStyle[] = [], minimum?: FooterSpacing): FooterSpacingWarning[] {
   if (page.footer_spacing === 'none') return [];
   const found = new Map<string, Breakpoint[]>();
   for (const bp of BREAKPOINT_ORDER) {
+    const floor = minimum == null ? null : resolveResponsive(minimum, bp);
+    if (typeof floor === 'number' && floor > 0 || typeof floor === 'string' && floor !== 'none') continue;
     let current = blocks.filter(b => !b.hidden_on?.includes(bp)).at(-1);
     const root = current;
     if (!root || !blockFooterSpace(root, bp, styles).zero) continue;

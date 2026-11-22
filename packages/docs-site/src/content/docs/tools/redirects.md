@@ -130,9 +130,40 @@ Each response also has `capacity`: the static and dynamic Cloudflare Pages rules
 the Site's redirects emit after the call (`static`, `dynamic`, including
 generated slash aliases), the limits (`limit_static` 2000, `limit_dynamic` 100),
 `remaining_static` and `over_limit`. Page redirects and old file addresses share
-the same limit. Publication adds media replacement rules on top, so when
-`capacity.warning` is present, consolidate rules before publishing; over the
-limit, publishing fails with `publication_redirect_limit`.
+the same limit. Publication adds media replacement rules on top.
+
+### Static overflow (Core 0.3.45 and later)
+
+Customer-account publishing can keep more than 2,000 exact-path rules without
+deleting redirects or adding a website function. The frozen publication keeps
+up to 2,000 static rules in Pages and delivers excess exact paths through
+Cloudflare Bulk Redirects. Slash variants, explicit destinations and HTTP status
+codes are retained. `capacity.overflow_static` counts the current excess and
+`bulk_required` says when Bulk access is needed. `over_limit` still describes
+the Pages file budget, rather than an unconditional publication failure.
+
+The website hostname must be proxied through a Cloudflare zone in the hosting
+account. Bulk access needs **Account Filter Lists** and **Bulk URL Redirects**
+read/edit permissions. An owner or administrator approves the connection update
+in Organization → Publishing after the installation offers those permissions.
+Self-hosted operators must first allow the scopes on their OAuth client and in
+their optional publishing scopes. Existing grants do not expand automatically.
+
+Typeroll shares two managed staging/active lists across the Organization's Sites
+in an account, rather than allocating a list per Site. Account-wide URL, list
+and rule quotas still apply, including the staged copy. A full quota stops the
+publication with an actionable error; it never drops a rule. Customer-owned
+lists and rules are not replaced. List contents are checked before the Pages
+deployment, then activated after candidate verification. Domain rollback restores
+only that publication's mappings and preserves other Sites and later publications.
+
+Bulk rules apply at the proxied website address, not at an immutable
+`pages.dev` candidate. Typeroll verifies their status and destination on the
+website address before reporting the publication as succeeded. The website
+and its media remain static. Query-string sources retain their existing
+in-page delivery; arbitrary patterns remain subject to Pages' 100-dynamic-rule
+limit. Earlier Core releases still reject excess Pages rules with
+`publication_redirect_limit`.
 
 ## `list_redirects`
 
@@ -155,3 +186,5 @@ The AI agent handles both steps automatically when you phrase it this way.
 ## Redirect limits
 
 Cloudflare Pages supports up to 2,100 redirects per site. For large migrations, the AI agent prioritises the most-trafficked URLs first.
+
+Static redirect overflow requires the Organization’s shared build engine. A Pages Git build without that engine keeps the native redirect limit and reports that build setup is required. Existing organization engines do not need to update automatically: the overflow plan and renderer travel with the frozen publication.

@@ -268,3 +268,12 @@ it('keeps a GitHub claim pinned even when a higher priority publication is waiti
   const claim = await queue.claim('org', 'engine-1', 1, { key: background.key, dispatch_id: 'synthetic-dispatch' });
   expect(claim?.key).toBe(background.key);
 });
+
+it('gives an unchanged prepared library to an older runner at its completed cursor', async () => {
+  const queue = new OrganizationBuildQueue();
+  const task = await queue.enqueue(identity(), 'older-engine', 1200, undefined, 1200);
+  expect(task.task).toMatchObject({ media_total: 1200, media_cursor: 1200, media_reused: 1200 });
+  const claim = await queue.claim('org', 'older-engine', 1);
+  expect(claim).toMatchObject({ media_total: 1200, media_cursor: 1200 });
+  await expect(queue.enqueue(identity('different'), 'older-engine', 1200, undefined, 1201)).rejects.toMatchObject({ status: 400 });
+});

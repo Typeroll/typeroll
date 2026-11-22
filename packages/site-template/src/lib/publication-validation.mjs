@@ -1,3 +1,4 @@
+import { pagesBulkRedirects } from '../../../shared/src/pages-redirect-overflow.mjs';
 import { parseDocument } from 'htmlparser2';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs/promises';
@@ -7,7 +8,7 @@ import { externalRoutesError } from '../../../shared/src/external-routes.mjs';
 import { robotsAllows } from './robots-policy.mjs';
 
 // Change with every change in validation semantics; never cache a prior verdict.
-export const SEO_VALIDATOR_VERSION = 2;
+export const SEO_VALIDATOR_VERSION = 3;
 // This is the report's wire shape, not the validator semantics. Existing customer
 // executors read format 1; source/configuration/artifact hashes bind each verdict.
 const SEO_REPORT_FORMAT_VERSION = 1;
@@ -85,6 +86,7 @@ export function validatePublication({ files, publication, routes = [], sourceHas
     const [from, to, status = '301'] = line.split(/\s+/);
     return { from, to, status: Number(status.replace('!', '')) };
   });
+  redirects.unshift(...pagesBulkRedirects(String(read('_redirects') ?? '')).map(rule => ({ from: rule.from_path, to: rule.to_path, status: rule.status_code })));
   function redirect(url) {
     for (const entry of redirects) {
       const source = new URL(entry.from, base);

@@ -229,6 +229,15 @@ only a wider width is supplied, it also supplies the mobile baseline. The map
 replaces the previous map. `null` clears the setting and preserves the site's
 historical block-owned spacing. Existing sites are not opted in automatically.
 
+From Core 0.3.45, use **Minimum gap** in the same settings card when an explicit
+zero in a final container must still leave space before the footer. API and MCP
+use `footer_min_spacing`, with the same space tokens, 0–320 px bounds and
+breakpoint maps. For example, `{"mobile":32,"laptop":64}` establishes a Site-wide
+minimum outside the last block, without editing each Page. The larger of this
+minimum and the automatic shared gap is used. Authored inside padding remains
+inside the block. `Page.footer_spacing: "none"` deliberately opts out of both
+shared gaps for an edge-to-edge ending.
+
 The gap applies after the last visible rendered block, including a page
 composed with a Page template or reusable global blocks. Default bottom padding
 on a final Section, Container or Hero is replaced by this shared gap, rather

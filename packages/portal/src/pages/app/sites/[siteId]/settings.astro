@@ -162,6 +162,14 @@ const domainBlocksArchiving =
           <input id={`setting-footer-spacing-${bp}`} name={`footer_spacing.${bp}`} list="footer-spacing-steps" value={typeof settings.footer_spacing === 'object' ? settings.footer_spacing[bp] ?? '' : bp === 'mobile' ? settings.footer_spacing ?? '' : ''} placeholder={bp === 'mobile' ? 'e.g. xl or 48' : 'Inherit'} />
         </div>)}
       </div>
+      <h3>Minimum gap</h3>
+      <p class="muted text-sm">Always leave this much space outside the last block, even when its bottom padding is zero. Configure it once for the Site. An intentional edge-to-edge Page still opts out.</p>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(8rem,1fr));gap:1rem">
+        {BREAKPOINT_ORDER.map(bp => <div class="field">
+          <label for={`setting-footer-min-spacing-${bp}`}>{bp[0]!.toUpperCase() + bp.slice(1)}</label>
+          <input id={`setting-footer-min-spacing-${bp}`} name={`footer_min_spacing.${bp}`} list="footer-spacing-steps" value={typeof settings.footer_min_spacing === 'object' ? settings.footer_min_spacing[bp] ?? '' : bp === 'mobile' ? settings.footer_min_spacing ?? '' : ''} placeholder={bp === 'mobile' ? 'e.g. xl or 48' : 'Inherit'} />
+        </div>)}
+      </div>
       <datalist id="footer-spacing-steps">{Object.keys(TOKEN_SCALES.space).map(step => <option value={step} />)}</datalist>
       <p class="muted text-sm">Steps follow Design scales → Space. Breakpoints follow the site widths. Page metadata → Meet the footer edge to edge omits this gap for an intentional full-bleed ending.</p>
     </div>

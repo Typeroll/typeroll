@@ -488,8 +488,16 @@ in `core/prose`, `core/html` or an HTML-mode page. Changing the text of a
 heading without one changes its address, and links to the old `#` address
 stop working.
 
-When a write changes the id of a heading on a published page, its response
-carries a `heading_anchor_changed` warning with the old and the new id:
+From Core 0.3.45, Page writes preserve existing `core/heading` and
+`core/rich_heading` anchors when the wording changes. The previous id is stored
+as `data.anchor_id`, using block identity even when headings are nested or moved.
+A no-op write does not add fields. Supply a different `anchor_id` deliberately
+to change the address, or supply `null` to return to generated ids. This does not
+rewrite a heading embedded in authored prose or HTML.
+
+For prose/HTML headings, or on earlier Core releases, a write that changes the id
+of a heading on a published page returns
+a `heading_anchor_changed` warning with the old and the new id:
 
 ```json
 {
@@ -519,3 +527,12 @@ reported when the heading or its block is removed, when the heading now has
 an explicit id, or when the old id is still on the page. Headings that other
 blocks render, such as card titles, are not part of the comparison; they can
 only shift a duplicate's number.
+
+### Legacy prose presentation fields
+
+Core 0.3.45 recognizes imported `core/prose` values named `font_size` (pixels)
+and `paragraph_spacing` (em). They no longer produce `unknown_field` warnings
+on unrelated Page edits. Their original units are retained; do not blindly
+rename an em spacing value to `paragraph_spacing_px`. New content should use
+`font_size_px` and `paragraph_spacing_px`; those explicit pixel fields take
+precedence when both forms are present. Existing legacy values can remain.

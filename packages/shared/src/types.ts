@@ -386,6 +386,8 @@ export interface SiteSettings {
   extension_public_config?: Record<string, Record<string, unknown>>;
   /** Opt-in shared space before the footer. Explicit final-block spacing wins. */
   footer_spacing?: import('./footer-spacing.js').FooterSpacing;
+  /** Minimum space outside the final block, including explicitly zero-padded endings. */
+  footer_min_spacing?: import('./footer-spacing.js').FooterSpacing;
   design_scales?: import('./design-tokens.js').DesignScales;
   typography?: import('./design-tokens.js').TypographySettings;
   site_name: string;
@@ -1218,7 +1220,7 @@ export interface FieldDefinition {
   item_key?: string;
   responsive?: boolean;
   /** Bounded numeric presentation variable emitted by the block renderer. */
-  css_unit?: 'px' | 'number';
+  css_unit?: 'px' | 'em' | 'number';
   /** Named site scale; numeric values remain explicit overrides. */
   design_token?: import('./design-tokens.js').TokenScale;
   /** A ready-made editor and formats for a known structure (site fields). */

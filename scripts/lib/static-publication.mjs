@@ -344,7 +344,7 @@ export function projectStaticPublication(input, { siteUrl, coreCommit, published
   // Site-specific responsive widths drive block responsive fields and styles.
   if (input.settings?.responsive_breakpoints) settings.responsive_breakpoints = projectNumbers(input.settings.responsive_breakpoints, ['tablet', 'laptop', 'desktop', 'wide']);
   if (input.settings?.content_widths) settings.content_widths = projectNumbers(input.settings.content_widths, ['narrow', 'normal', 'wide']);
-  for (const [key, validate] of [['footer_spacing', footerSpacingError], ['design_scales', designScalesError], ['typography', typographyError]]) {
+  for (const [key, validate] of [['footer_spacing', footerSpacingError], ['footer_min_spacing', footerSpacingError], ['design_scales', designScalesError], ['typography', typographyError]]) {
     if (input.settings?.[key] === undefined) continue;
     const error = validate(input.settings[key]);
     if (error) throw new Error(`Invalid public ${key}: ${error}`);

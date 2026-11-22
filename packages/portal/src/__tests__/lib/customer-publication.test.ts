@@ -406,7 +406,7 @@ it('switches DNS for the same main artifact without a second push, build or uplo
   const frozen = (await store.getDoc<any>(jobPath)).git_publication;
   complete(frozen.branch);
   const preview = mocks.deployment; mocks.deployment = null;
-  mocks.built.mockResolvedValue({ task: {}, files: {}, direct: { format: 1 } });
+  mocks.built.mockResolvedValue({ task: {}, files: {}, direct: { format: 1, controls: {} } });
   mocks.direct.mockImplementation(async (_client, target) => {
     const deployment = { ...preview, id: target.branch === 'main' ? 'promoted' : 'deployment', environment: target.branch === 'main' ? 'production' : 'preview', deployment_trigger: { metadata: { commit_hash: target.commit, branch: target.branch } } };
     mocks.deployment = deployment; return deployment;
@@ -509,7 +509,7 @@ it.each(['cloudflare', 'github'] as const)('uses the %s engine and blocks the li
   await getStore().updateDoc(`${paths.pages('org', 'site')}/home`, { html_content: 'New unsaved-to-Git version' });
   await getStore().updateDoc('organizations/org/publishing/build_selection', { provider: providerName === 'github' ? 'cloudflare' : 'github' });
   const renderReport = { format: 1, mode: 'partial', rendered: 1, reused: 49, total: 50, removed: 0, reason: 'unchanged_routes_reused' };
-  mocks.built.mockResolvedValue({ task: { render_report: renderReport }, files: {}, direct: { format: 1 } });
+  mocks.built.mockResolvedValue({ task: { render_report: renderReport }, files: {}, direct: { format: 1, controls: {} } });
   complete(); const finished = mocks.deployment;
   // Disabled Pages Git integrations still emit a skipped deployment for this commit.
   mocks.deployment = { ...finished, id: 'skipped-git-build', is_skipped: true, latest_stage: { name: 'queued', status: 'idle' } };
@@ -970,7 +970,7 @@ it('keeps direct publication waiting for customer verification, then runs only b
   mocks.enqueue.mockResolvedValue({ key: 'task' }); mocks.built.mockResolvedValue(null);
   expect(await executeCustomerPublication(args)).toBe('waiting');
   await getStore().setDoc('organizations/org/build_tasks/task', { status: 'completed', completed_at: Date.now() });
-  mocks.built.mockResolvedValue({ task: {}, files: {}, direct: { format: 1 } });
+  mocks.built.mockResolvedValue({ task: {}, files: {}, direct: { format: 1, controls: {} } });
   mocks.verificationPlan.mockResolvedValue({ verification_checks_key: 'customer-checks', probe_checks_key: 'bounded-probes', static_controls_sha256: 'controls' });
   mocks.direct.mockImplementation(async () => { complete(); return mocks.deployment; });
   mocks.probe.mockResolvedValue(true); mocks.candidateVerification.mockResolvedValue(false);
@@ -1000,7 +1000,7 @@ it('attaches and verifies the media host before the deployment replaces the live
   mocks.enqueue.mockResolvedValue({ key: 'task' }); mocks.built.mockResolvedValue(null);
   expect(await executeCustomerPublication(args)).toBe('waiting');
   await store.setDoc('organizations/org/build_tasks/task', { status: 'completed', completed_at: Date.now() });
-  mocks.built.mockResolvedValue({ task: {}, files: {}, direct: { format: 1 } });
+  mocks.built.mockResolvedValue({ task: {}, files: {}, direct: { format: 1, controls: {} } });
   mocks.verificationPlan.mockResolvedValue({ verification_checks_key: 'customer-checks', probe_checks_key: 'bounded-probes', static_controls_sha256: 'controls' });
   mocks.direct.mockImplementation(async () => { complete(); return mocks.deployment; });
   // The new media host does not serve the files yet: the live site must stay as it is.
@@ -1040,7 +1040,7 @@ async function engineJobWithMedia() {
   mocks.enqueue.mockResolvedValue({ key: 'task' }); mocks.built.mockResolvedValue(null);
   expect(await executeCustomerPublication(args)).toBe('waiting');
   await store.setDoc('organizations/org/build_tasks/task', { status: 'completed', completed_at: Date.now() });
-  mocks.built.mockResolvedValue({ task: {}, files: {}, direct: { format: 1 } });
+  mocks.built.mockResolvedValue({ task: {}, files: {}, direct: { format: 1, controls: {} } });
   mocks.verificationPlan.mockResolvedValue({ verification_checks_key: 'customer-checks', probe_checks_key: 'bounded-probes', static_controls_sha256: 'controls' });
   mocks.direct.mockImplementation(async () => { complete(); return mocks.deployment; });
 }
@@ -1806,4 +1806,13 @@ it('recovers a live publication whose verification runner could not start withou
   expect(mocks.candidateVerification).toHaveBeenCalledWith('org', jobPath, expect.anything(), `https://immutable.${project}.pages.dev`, true);
   for (const mock of [mocks.push, mocks.source, mocks.enqueue, mocks.direct]) expect(mock).not.toHaveBeenCalled();
   expect(mocks.cloudflare.mock.calls.every(([, options]) => !options?.method || options.method === 'GET')).toBe(true);
+});
+
+it('requires a shared engine before publishing redirect overflow through a legacy Pages Git build', async () => {
+  const store = getStore();
+  for (let i = 0; i < 2001; i++) await store.setDoc(`${paths.redirects('org', 'site')}/r-${i}`, { from_path: `/old-${i}.html`, to_path: '/', status_code: 301 });
+  await executeCustomerPublication(args);
+  const job = await store.getDoc<any>(jobPath);
+  expect(job).toMatchObject({ status: 'failed', failure: { code: 'bulk_redirect_build_engine_required' } });
+  expect(mocks.push).not.toHaveBeenCalled();
 });

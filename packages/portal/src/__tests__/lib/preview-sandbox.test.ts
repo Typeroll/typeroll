@@ -105,7 +105,7 @@ describe('token-authed preview route', () => {
     expect(outer.status).toBe(200);
     expect(outer.headers.get('Content-Security-Policy')).toContain("frame-src 'self'");
     const shell = await outer.text();
-    expect(shell).toContain('sandbox="allow-scripts allow-forms allow-popups"');
+    expect(shell).toContain('sandbox="allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox"');
     expect(shell).not.toContain('allow-same-origin');
     expect(shell).not.toContain('<h1>Hello</h1>');
     expect(shell).toContain('sessionStorage');
@@ -254,7 +254,7 @@ describe('browse preview route — per-mode isolation', () => {
     const res = await call('');
     expect(res.status).toBe(200);
     expect(res.headers.get('Content-Security-Policy')).toContain("frame-src 'self'");
-    expect(await res.text()).toContain('sandbox="allow-scripts allow-forms allow-popups"');
+    expect(await res.text()).toContain('sandbox="allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox"');
   });
 
   it("keeps the chat's draft=1 content in an opaque child shell", async () => {

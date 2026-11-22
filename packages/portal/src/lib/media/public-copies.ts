@@ -1,3 +1,4 @@
+import { mapPublicationParts } from '../publishing/parallel';
 // Published copies of media in the organization's PUBLIC R2 bucket.
 //
 // A publication does not serve a media record's private object. The build
@@ -462,9 +463,16 @@ export async function findCopies(orgId: string, _siteId: string, input: {
         ...[...subject.prepared_shas].flatMap(sha => [...new Set(['v1', MEDIA_RECIPE_VERSION])].map(recipe => (
           { bucket: 'private' as const, prefix: `private/${scope.prefix}/prepared/${recipe}/${sha}/`, accept: () => true }))),
       ];
-      for (const lookup of lookups) {
+      const fetched = await mapPublicationParts(lookups, async lookup => {
+        try { return { keys: await list(lookup.bucket === 'public' ? storage!.public_bucket : storage!.original_bucket, lookup.prefix) }; }
+        catch (error) { return { error }; }
+      }, 4);
+      for (let index = 0; index < lookups.length; index++) {
+        const lookup = lookups[index]!;
         try {
-          const keys = await list(lookup.bucket === 'public' ? storage.public_bucket : storage.original_bucket, lookup.prefix);
+          const result = fetched[index]!;
+          if ('error' in result) throw result.error;
+          const keys = result.keys!;
           for (const key of keys) {
             if (lookup.accept(key)) add(lookup.bucket, key, subject.media_id);
             // Another existing record's file (its own base) is that record's business.
@@ -515,8 +523,8 @@ export function plannedKeys(plan: CopyPlan, mediaId?: string | null): PendingKey
 export async function applyCopyRemoval(orgId: string, siteId: string, plan: CopyPlan, input: { dryRun: boolean; alwaysPurge?: string[] }): Promise<CopyRemovalResult> {
   const { result, storage } = plan;
   if (storage && !input.dryRun) {
-    for (const object of result.objects) {
-      if (object.status !== 'would_remove') continue;
+    await mapPublicationParts(result.objects, async object => {
+      if (object.status !== 'would_remove') return;
       try {
         await storage.remove(object.bucket === 'public' ? storage.public_bucket : storage.original_bucket, object.key);
         object.status = 'removed';
@@ -524,7 +532,7 @@ export async function applyCopyRemoval(orgId: string, siteId: string, plan: Copy
         object.status = 'failed';
         object.reason = errorText(error);
       }
-    }
+    }, 4);
   }
   const served = result.objects.filter(object => object.bucket === 'public' && (object.status === 'would_remove' || object.status === 'removed')).flatMap(object => object.urls ?? []);
   result.urls = [...new Set(served)];

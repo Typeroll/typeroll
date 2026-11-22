@@ -42,7 +42,7 @@ export function buildExtensionPreviewShell(args: ExtensionPreviewShellArgs): str
   return `<!doctype html>
 <html><head><meta charset="utf-8"><meta name="referrer" content="no-referrer"><meta name="viewport" content="width=device-width"><title>Typeroll preview</title>
 <style>html,body{margin:0;width:100%;height:100%;overflow:hidden}iframe{display:block;width:100%;height:100%;border:0}</style></head>
-<body><iframe src="${source}" id="preview" title="Site preview" sandbox="allow-scripts allow-forms allow-popups${args.realOrigin ? ' allow-same-origin' : ''}"></iframe>
+<body><iframe src="${source}" id="preview" title="Site preview" sandbox="allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox${args.realOrigin ? ' allow-same-origin' : ''}"></iframe>
 <script>(function(){"use strict";
 var siteId=${json(args.siteId)},bridgeId=${json(args.bridgeId)},root=${json(args.rootPath.replace(/\/$/, ''))},carriedQuery=${JSON.stringify(args.carriedQuery ?? {}).replace(/</g, '\\u003c')};
 var frame=document.getElementById("preview");

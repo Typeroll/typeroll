@@ -129,6 +129,8 @@ describe('deleting a media item', () => {
     // The file stays public under the twin: the delete is not complete, and says why.
     expect(outcome.status).toBe(207);
     expect(outcome.body).toMatchObject({ complete: false, incomplete_reasons: ['objects_protected'] });
+    expect(outcome.body.protection).toMatchObject({ reason: 'referenced_by_other_media', referenced_by_media_ids: ['twin'] });
+    expect((outcome.body.protection as any).public_urls_retained).toContain(`https://${ORG_HOST}/${BASE}`);
     expect((outcome.body.warnings as string[]).join('\n')).toContain('twin');
     expect((outcome.body.private_objects as any).kept).toEqual([{ key: ORIGINAL, source: 'storage', referenced_by: 'twin' }]);
     expect((outcome.body.private_copies as any).protected.map((entry: any) => entry.key)).toEqual(PREPARED);
@@ -557,6 +559,25 @@ describe('media API routes', () => {
     const request = new Request(url, { method, headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' }, ...(body ? { body: JSON.stringify(body) } : {}) });
     return handler({ request, params, cookies: { get: () => undefined } as any, locals: {} as any } as any) as Promise<Response>;
   }
+
+  it('batch DELETE rejects duplicate ids and reports each removal alongside a missing item', async () => {
+    const store = await setup();
+    await store.setDoc(paths.version(ORG, SITE, MAIN_VERSION_ID), { name: 'Main', kind: 'main', created_at: '2026-01-01T00:00:00.000Z' });
+    await store.setDoc(`${paths.media(ORG, SITE)}/photo`, record());
+    const { createApiKey } = await import('../../lib/api-keys');
+    const { token } = await createApiKey({ orgId: ORG, siteId: SITE, name: 'test', createdBy: 'admin@example.com' });
+    const route = () => import('../../pages/api/v1/sites/[siteId]/media/index');
+    const url = `https://portal.example.test/api/v1/sites/${SITE}/media`;
+    const invalid = await call(route(), 'DELETE', url, { siteId: SITE }, token, { media_ids: ['photo', 'photo'] });
+    expect(invalid.status).toBe(400);
+    expect(await store.getDoc(`${paths.media(ORG, SITE)}/photo`)).not.toBeNull();
+    const response = await call(route(), 'DELETE', url, { siteId: SITE }, token, { media_ids: ['photo', 'missing'] });
+    expect(response.status).toBe(207);
+    const body = await response.json();
+    expect(body.results).toEqual([expect.objectContaining({ media_id: 'photo', status: 200, complete: true }), expect.objectContaining({ media_id: 'missing', status: 404, complete: false })]);
+    expect(await store.getDoc(`${paths.media(ORG, SITE)}/photo`)).toBeNull();
+    expect(fake.public.has(BASE)).toBe(false);
+  });
 
   it('DELETE removes the published copies and POST published-copies removes them by URL', async () => {
     const store = await setup();

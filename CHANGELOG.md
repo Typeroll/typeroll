@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.3.45 (candidate, MCP 0.45.148)
+
+- Publish exact-path redirect overflow with account-scoped Cloudflare Bulk
+  Redirects, retaining slash aliases, destinations and statuses. Stage shared
+  lists before replacing Pages output, verify activation and public redirects,
+  and restore only the affected publication on domain rollback. Keep sites
+  static and customer-owned rules intact; report missing consent and quotas.
+- Skip the preparation pass when a completed previous publication proves an
+  unchanged media scope and recipe. Continue normal materialization and byte
+  verification, including on older build engines.
+- Fix phone date-field overflow with shrinkable form fields, bounded border-box
+  inputs and the WebKit date appearance reset. This corrects the intended
+  layout across existing render versions; update their reference output.
+- Add responsive theme-level `footer_min_spacing`, including for zero-padded
+  final containers, with an intentional Page edge-to-edge opt-out.
+- Explain provider-blocked preview embeds visibly, resolve PDF aliases to
+  private preview media, and open files in isolated new tabs without an opener.
+- Add bounded batch media deletion with per-item results and explicit protected
+  file owners/URLs. Overlap independent storage lookups and object removals.
+- Recognize legacy prose font size in pixels and paragraph spacing in em;
+  prefer canonical pixel fields without converting units or dropping values.
+  This restores intended imported presentation on existing render versions.
+- Preserve existing Page block heading anchors when text changes. Explicit ids
+  and null regeneration remain available; prose/HTML still report anchor changes.
+
 ## 0.3.43 (candidate, MCP 0.45.146)
 
 - Report the observed live publication separately from final verification, in

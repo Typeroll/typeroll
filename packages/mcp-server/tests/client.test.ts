@@ -27,6 +27,14 @@ function json(body: unknown, status = 200): Response {
 }
 
 describe('TyperollClient', () => {
+  it('sends an explicit DELETE batch body without putting ids in the URL', async () => {
+    const { fetch, calls } = mockFetch(() => json({ complete: true, results: [] }));
+    const c = new TyperollClient({ baseUrl: 'https://example.test', apiKey: 'synthetic', fetchImpl: fetch });
+    await c.del('site1', 'media', undefined, { media_ids: ['one', 'two'] });
+    expect(calls[0]!.url).toBe('https://example.test/api/v1/sites/site1/media');
+    expect(calls[0]!.init?.method).toBe('DELETE');
+    expect(JSON.parse(String(calls[0]!.init?.body))).toEqual({ media_ids: ['one', 'two'] });
+  });
   it('attaches the bearer token', async () => {
     const { fetch, calls } = mockFetch(() => json({ ok: true }));
     const c = new TyperollClient({

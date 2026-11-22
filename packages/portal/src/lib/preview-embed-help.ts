@@ -20,17 +20,18 @@ function installPreviewEmbedHelp() {
     const css = document.createElement('style');
     css.textContent = ':host{display:block;clear:both;margin:.5rem 0;font:14px/1.5 system-ui;color:#292936}details{padding:.5rem .75rem;border:1px solid #c8c8d0;border-radius:6px;background:#f7f7fa}summary{cursor:pointer}p{margin:.5rem 0}a,button{color:#67307b}button{margin-left:1rem;font:inherit;background:white;border:1px solid #777;border-radius:4px;padding:.2rem .5rem}';
     const details = document.createElement('details');
+    details.open = true;
     const summary = document.createElement('summary');
-    summary.textContent = 'External embed · ' + target.hostname;
+    summary.textContent = 'External content in preview · ' + target.hostname;
     const description = document.createElement('p');
-    description.textContent = 'If this embed is blank, its provider may restrict previews, require consent or need a published domain. Typeroll cannot confirm whether it loaded. Check the published page separately before launch.';
+    description.textContent = 'This provider may only display its form on the published website. A blank area in preview does not mean the form is missing from the page. Typeroll cannot confirm whether the provider allowed this preview. Open the provider separately or check the published page.';
     const link = document.createElement('a');
     link.href = target.href; link.target = '_blank'; link.rel = 'noopener noreferrer'; link.textContent = 'Open provider separately';
     const retry = document.createElement('button');
     retry.type = 'button'; retry.textContent = 'Reload embed';
     retry.addEventListener('click', () => { if (confirm('Reload this embed? Any unsent form answers may be lost.')) frame.src = frame.src; });
     details.append(summary, description, link, retry); shadow.append(css, details);
-    frame.insertAdjacentElement('afterend', host);
+    frame.insertAdjacentElement('beforebegin', host);
     let wasCollapsed = false;
     const resize = new ResizeObserver(() => {
       const collapsed = frame.getBoundingClientRect().height < 20;

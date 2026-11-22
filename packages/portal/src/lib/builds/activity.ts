@@ -60,7 +60,7 @@ export async function buildActivity(org: string, now = Date.now()) {
     return { key: task.id, job_id: task.identity.job_id, site_id: task.identity.site_id, site_name: input?.kind === 'qualification' ? 'Build verification' : site?.name ?? task.identity.site_id,
       kind: input?.kind, version_id: task.identity.version_id, status, phase: queue?.message ?? phase, queue, provider: input?.provider ?? 'cloudflare', attempt: task.attempt,
       // `attempt` also counts planned media windows; split it so a window never reads as a restart (SE-07).
-      ...buildAttemptParts(task), static_verification: input?.kind === 'static_verification' && status !== 'publishing' ? { completed: task.media_cursor ?? 0, total: task.media_total ?? 0 } : null, media_preparation: input?.kind !== 'static_verification' && task.media_total && status !== 'publishing' ? { completed: task.media_cursor ?? 0, total: task.media_total } : null };
+      ...buildAttemptParts(task), static_verification: input?.kind === 'static_verification' && status !== 'publishing' ? { completed: task.media_cursor ?? 0, total: task.media_total ?? 0 } : null, media_preparation: input?.kind !== 'static_verification' && task.media_total && status !== 'publishing' ? { prepared_reused: task.media_reused ?? 0, completed: task.media_cursor ?? 0, total: task.media_total } : null };
   }));
   return { active_jobs: jobs, awaiting_approval: awaitingApproval };
 }

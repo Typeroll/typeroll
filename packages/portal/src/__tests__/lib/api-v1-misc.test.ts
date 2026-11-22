@@ -504,7 +504,8 @@ describe('redirects endpoints', () => {
       Array.from({ length: 200 }, (_, i) => ({ from_path: `/wp-content/uploads/new-${i}.jpg`, to_path: '/media/a.jpg' })) } });
     const body = await res.json() as any;
     expect(body.capacity).toMatchObject({ static: 2100, over_limit: true });
-    expect(body.capacity.warning).toContain('publication_redirect_limit');
+    expect(body.capacity).toMatchObject({ overflow_static: 100, bulk_required: true });
+    expect(body.capacity.warning).toContain('Bulk Redirects');
   });
 
   it('PUT applies many updates in place and keeps every id', async () => {

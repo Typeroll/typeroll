@@ -163,3 +163,8 @@ that override when the page should inherit. For an intentional full-bleed
 ending, set the Page's `footer_spacing` to `none` and record the decision.
 Check `layout_warnings` after Save; `footer_spacing_zero` identifies an explicit
 zero next to text/form content. Verify mobile and desktop before publishing.
+
+From Core 0.3.45, configure `footer_min_spacing` once at Site/theme level when
+zero-padded endings must still leave a minimum gap. It accepts the same space
+tokens, pixels and responsive maps. It adds outside space even when a final
+block owns its padding; an intentional Page `footer_spacing: none` opts out.

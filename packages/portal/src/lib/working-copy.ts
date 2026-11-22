@@ -2,7 +2,7 @@ import { pageFooterSpacingWarnings } from './footer-spacing-warnings';
 import type { FooterSpacingWarning } from '@typeroll/shared';
 import { customCssWriteError } from './custom-css-write';
 import { isDeepStrictEqual } from 'node:util';
-import { ensureBlockIds, invalidFieldValuesBody, invalidSelectValues, type Block } from '@typeroll/shared';
+import { ensureBlockIds, invalidFieldValuesBody, invalidSelectValues, preserveHeadingAnchors, type Block } from '@typeroll/shared';
 import { siteBlockRegistry } from './block-write-warnings';
 import { blockTreeInputError } from './block-tree-input';
 import { contentPagePath, pageAuthorityFields } from '@typeroll/shared';
@@ -168,7 +168,8 @@ export async function filterWcFields(
       const body = invalidFieldValuesBody(invalid);
       throw new WorkingCopyError(body.error, 400, body.code, body.details);
     }
-    fields = { ...fields, blocks: ensureBlockIds(structuredClone(blocks) as Block[]) };
+    const normalized = ensureBlockIds(structuredClone(blocks) as Block[]);
+    fields = { ...fields, blocks: target.kind === 'page' ? preserveHeadingAnchors(Array.isArray(stored) ? stored : [], normalized) : normalized };
   }
   // Check custom CSS only when it changes: an autosave that echoes a page's
   // existing CSS must not fail over problems the author did not touch.

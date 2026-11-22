@@ -58,7 +58,7 @@ export function realOriginPreviewHeaders(): Record<string, string> {
   const config = previewOriginConfig();
   if (!config) throw new Error('Isolated preview origin is not configured');
   return {
-    'Content-Security-Policy': `sandbox allow-scripts allow-forms allow-popups allow-same-origin; frame-ancestors 'self' ${config.portal}; object-src 'none'; worker-src 'none'; base-uri 'none'`,
+    'Content-Security-Policy': `sandbox allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-same-origin; frame-ancestors 'self' ${config.portal}; object-src 'none'; worker-src 'none'; base-uri 'none'`,
     'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex, nofollow',
     'Referrer-Policy': 'no-referrer', 'X-Content-Type-Options': 'nosniff',
   };

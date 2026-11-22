@@ -186,6 +186,7 @@ export const SITE_COPY_SETTINGS: { [K in keyof Required<SiteSettings>]: 'copy' |
   motion: 'design',
   content_widths: 'package',
   footer_spacing: 'package',
+  footer_min_spacing: 'package',
   // Indexing switches of the source's publication (a staging site's noindex must not carry over silently).
   sitewide_noindex: 'strip',
   sitewide_nofollow: 'strip',

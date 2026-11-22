@@ -85,3 +85,13 @@ it('rejects a verification-start recovery if the actual build failed or the task
   await getStore().updateDoc('organizations/org/build_tasks/verify', { identity: { job_id: 'other' } });
   await expect(retryPublicationVerification('org', 'site', 'job', 'main')).rejects.toMatchObject({ code: 'verification_retry_unavailable' });
 });
+
+it('requires redirect activation before admitting verification-only recovery', async () => {
+  const store = getStore();
+  const withOverflow = { ...publication, bulk_redirects: { count: 28, chunks: 1, digest: 'a'.repeat(64) } };
+  await store.updateDoc(path, { git_publication: withOverflow });
+  await expect(retryPublicationVerification('org', 'site', 'job', 'main')).rejects.toMatchObject({ code: 'verification_retry_unavailable' });
+  expect((await store.getDoc<any>(path)).status).toBe('failed');
+  await store.updateDoc(path, { git_publication: { ...withOverflow, bulk_activated: true } });
+  await expect(retryPublicationVerification('org', 'site', 'job', 'main')).resolves.toMatchObject({ verification_only: true });
+});

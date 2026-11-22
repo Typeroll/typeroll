@@ -69,31 +69,25 @@ const anchorWarnings = async (res: Response) => ((await res.json()) as { warning
 describe('heading_anchor_changed', () => {
   beforeEach(async () => { await resetDatastore(); });
 
-  it('warns with the old and new id when a page PATCH changes a published heading', async () => {
+  it('retains the published id when a page PATCH changes heading text', async () => {
     const { token } = await setup();
     await seedPage('home', [heading('Kosten berekenen')]);
     const res = await call(pageRoute(), 'PATCH', pageUrl, params, token, { blocks: [heading('Kosten vergelijken')], save: true });
     expect(res.status).toBe(200);
-    expect(await anchorWarnings(res)).toEqual([{
-      code: 'heading_anchor_changed',
-      block_id: 'kosten',
-      block_type: 'core/rich_heading',
-      path: 'blocks[0].data.anchor_id',
-      old_id: 'kosten-berekenen',
-      new_id: 'kosten-vergelijken',
-      message: 'A heading in core/rich_heading block kosten is published with the id "kosten-berekenen" and will get "kosten-vergelijken" (an id without anchor_id follows the heading text), so links to #kosten-berekenen stop working. Set blocks[0].data.anchor_id to "kosten-berekenen" to keep them.',
-    }]);
+    expect(await anchorWarnings(res)).toEqual([]);
+    const saved = await (await store()).getDoc<Page>(`${paths.pages(ORG, SITE, MAIN_VERSION_ID)}/home`);
+    expect(saved?.blocks?.[0]?.data.anchor_id).toBe('kosten-berekenen');
     // Following the hint keeps the id: no warning.
     const kept = await call(pageRoute(), 'PATCH', pageUrl, params, token, { blocks: [heading('Kosten vergelijken', { anchor_id: 'kosten-berekenen' })] });
     expect(await anchorWarnings(kept)).toEqual([]);
   });
 
-  it('warns once, on the write that changes it', async () => {
+  it('keeps the anchor through individual block updates and later unrelated writes', async () => {
     const { token } = await setup();
     await seedPage('home', [heading('Kosten berekenen'), { id: 'p', type: 'core/prose', data: { html: '<p>x</p>' } }]);
     const first = await call(pageBlocks(), 'PATCH', `${pageUrl}/blocks`, params, token, { block_id: 'kosten', data: { html: 'Kosten vergelijken' } });
     expect(first.status).toBe(200);
-    expect((await anchorWarnings(first)).map(warning => [warning.old_id, warning.new_id, warning.path])).toEqual([['kosten-berekenen', 'kosten-vergelijken', 'blocks[0].data.anchor_id']]);
+    expect(await anchorWarnings(first)).toEqual([]);
     const unrelated = await call(pageBlocks(), 'PATCH', `${pageUrl}/blocks`, params, token, { block_id: 'p', data: { html: '<p>y</p>' } });
     expect(await anchorWarnings(unrelated)).toEqual([]);
   });
