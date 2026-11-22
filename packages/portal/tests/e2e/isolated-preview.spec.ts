@@ -19,8 +19,8 @@ test('isolated origin keeps the actual editor and shared preview working without
     const preview = iframe.contentFrame();
     await expect(preview.getByRole('heading', { name: 'Original heading' })).toBeVisible();
     await expect(preview.frameLocator('iframe[title="Partner form"]').getByRole('button', { name: 'Continue' })).toBeVisible();
-    await expect(preview.getByText('External embed · www.youtube.com')).toBeVisible();
-    await preview.getByText('External embed · www.youtube.com').click();
+    await expect(preview.getByText('External content in preview · www.youtube.com')).toBeVisible();
+    await expect(preview.locator('[data-preview-embed-help] details')).toHaveAttribute('open', '');
     await expect(preview.getByText(/Typeroll cannot confirm/)).toBeVisible();
     const frame = await iframe.elementHandle().then(handle => handle!.contentFrame());
     const origin = new URL(frame!.url()).origin;
