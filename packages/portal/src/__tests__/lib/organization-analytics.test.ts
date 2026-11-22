@@ -62,7 +62,8 @@ describe('Analytics chosen per Site after one approval', () => {
     expect(overview.sites.map(site => [site.site_id, site.enabled, site.beacon_configured, site.setup])).toEqual([
       ['alpha', false, false, null], ['bravo', false, false, null], ['charlie', false, false, null]]);
     expect(overview.sites[0]).toMatchObject({ hosting_group_id: 'default', hosting_group_name: 'Default' });
-    expect(overview.cloudflare_permissions[0].capabilities.every(item => item.status === 'available')).toBe(true);
+    expect(overview.cloudflare_permissions[0].capabilities.filter(item => item.capability !== 'bulk_redirects').every(item => item.status === 'available')).toBe(true);
+    expect(overview.cloudflare_permissions[0].capabilities.find(item => item.capability === 'bulk_redirects')?.status).toBe('not_offered');
     for (const id of SITES) expect(await apps(id)).toBeUndefined();
   });
 

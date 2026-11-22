@@ -95,7 +95,7 @@ describe('page block writes', () => {
     await seedPage(article());
     const viaQuery = await call(pageRoute(), 'PATCH', `${pageUrl}?response=summary`, pageParams, token, { block_id: 'inner', data: { text: 'Inner 2' } });
     expect(viaQuery.body).toEqual({
-      block: { id: 'inner', type: 'core/heading', data: { text: 'Inner 2', level: 'h2' } },
+      block: { id: 'inner', type: 'core/heading', data: { text: 'Inner 2', level: 'h2', anchor_id: 'inner' } },
       parent_id: 'sec', slot_index: null, position: 0, has_unsaved_changes: true,
     });
     // The body wins over the query.
@@ -202,6 +202,7 @@ describe('one block in a partial or template over REST', () => {
     // The rest of the footer is untouched.
     const expected = footer();
     expected[0]!.children![1]!.data.text = 'Contact us';
+    expected[0]!.children![1]!.data.anchor_id = 'contact';
     expect(res.body.blocks).toEqual(expected);
     // The change is in the partial's draft; the saved footer is unchanged until it is saved.
     const read = await call(containerRoute(), 'GET', containerUrl('partial', 'footer'), containerParams('partial', 'footer'), token);
