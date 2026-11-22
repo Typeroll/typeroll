@@ -99,7 +99,7 @@ async function listItems(provider: ProviderClient, root: string, list: any): Pro
       const r = item.redirect;
       if (typeof item.comment !== 'string' || !/^typeroll:[a-f0-9]{32}:[a-f0-9]{16}$/.test(item.comment) || !r ||
         typeof r.source_url !== 'string' || typeof r.target_url !== 'string' || ![301, 302].includes(r.status_code) ||
-        r.include_subdomains === true || r.subpath_matching === true || r.preserve_query_string === true) throw new ConnectionError('A managed Bulk Redirect list was edited outside Typeroll. Review it before publishing; customer rules are not overwritten.', 409, 'bulk_redirect_conflict');
+        r.include_subdomains === true || r.subpath_matching === true || r.preserve_path_suffix === true || r.preserve_query_string === true) throw new ConnectionError('A managed Bulk Redirect list was edited outside Typeroll. Review it before publishing; customer rules are not overwritten.', 409, 'bulk_redirect_conflict');
       items.push({ comment: item.comment, redirect: { source_url: r.source_url, target_url: r.target_url, status_code: r.status_code, include_subdomains: false, subpath_matching: false, preserve_path_suffix: false, preserve_query_string: false } });
     }
     cursor = page.result_info?.cursors?.after || '';
@@ -214,6 +214,7 @@ export async function prepareBulkRedirects(ctx: BulkRedirectContext, rules: Page
       await save({ ...pending, prepared: true });
     }
     if (!activate) return true;
+    if (hashItems(await listItems(call, root, target)) !== pending.hash) throw new ConnectionError('The staged Bulk Redirect list changed before activation. Existing traffic was retained.', 409, 'bulk_redirect_conflict');
     // Re-read immediately before the pointer update, and only patch our own
     // rule. Never PUT an entire entry point containing customer rules.
     entry = await call(`${root}/rulesets/phases/${PHASE}/entrypoint`, { missing: true });

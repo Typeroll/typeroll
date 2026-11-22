@@ -516,7 +516,7 @@ it.each(['cloudflare', 'github'] as const)('uses the %s engine and blocks the li
   mocks.direct.mockImplementation(async () => { mocks.deployment = finished; return finished; });
   mocks.probe.mockResolvedValue(true); mocks.verify.mockResolvedValue(false);
   expect(await executeCustomerPublication(args)).toBe('waiting');
-  expect(mocks.direct).toHaveBeenCalledWith(mocks.cloudflare, expect.objectContaining({ account: 'a'.repeat(32), project, branch: 'main' }), { format: 1 });
+  expect(mocks.direct).toHaveBeenCalledWith(mocks.cloudflare, expect.objectContaining({ account: 'a'.repeat(32), project, branch: 'main' }), { format: 1, controls: {} });
   expect((await getStore().getDoc<any>(jobPath)).deploy_url).toBeUndefined();
   expect((await getStore().getDoc<any>(jobPath)).render_report).toEqual(renderReport);
   mocks.verify.mockResolvedValue(true);

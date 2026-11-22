@@ -164,3 +164,11 @@ it('releases a parked candidate and rebases it on sites published during approva
   expect(p.state.items[id].map(i => i.redirect.source_url).sort()).toEqual(['second.example.test/old/', 'www.example.test/old/']);
   expect(bulkRedirectItems({ ...ctx, host: 'x.pages.dev' }, [])).toEqual([]);
 });
+
+it('refuses staged contents changed after preparation instead of activating them', async () => {
+  const p = provider();
+  await finish(p, ctx, rules, false);
+  Object.values(p.state.items)[0]![0].redirect.target_url = 'https://unexpected.example.test/';
+  await expect(prepareBulkRedirects(ctx, rules, p.client, true)).rejects.toMatchObject({ code: 'bulk_redirect_conflict' });
+  expect(p.state.rules).toHaveLength(0);
+});
