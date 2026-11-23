@@ -135,7 +135,7 @@ it('keeps a stopped dispatch queued while an earlier claimed runner still works'
 it('waits behind older queued work before requesting another shared runner', async () => {
   const first = await enqueue('first');
   advance(MINUTE);
-  const waiting = await enqueue('waiting', 'publication', { dispatch_id: null });
+  const waiting = await enqueue('waiting', 'publication', { dispatch_id: undefined });
   provider.status = 'stopped';
   await dispatchPendingBuild('org', waiting, config);
   expect(provider.dispatch).not.toHaveBeenCalled();
@@ -148,7 +148,7 @@ it('waits behind older queued work before requesting another shared runner', asy
 it('does not wait behind an expired unclaimed step', async () => {
   await enqueue('expired');
   advance(QUEUED_BUILD_LIMIT_MS + MINUTE);
-  const waiting = await enqueue('waiting', 'publication', { dispatch_id: null });
+  const waiting = await enqueue('waiting', 'publication', { dispatch_id: undefined });
   await dispatchPendingBuild('org', waiting, config);
   expect(provider.dispatch).toHaveBeenCalledOnce();
 });
