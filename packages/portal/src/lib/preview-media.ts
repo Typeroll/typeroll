@@ -43,7 +43,8 @@ export function rewritePreviewFileLinks(html: string, media: import('@typeroll/s
     const attr = /\bhref\s*=\s*(?:"([^"]*)"|'([^']*)')/i.exec(tag);
     if (!attr) return anchor;
     const href = (attr[1] ?? attr[2] ?? '').replaceAll('&amp;', '&');
-    let source = exact.get(href), localPath = '';
+    const resource = href.split('#')[0]!;
+    let source = exact.get(href) ?? exact.get(resource), localPath = '';
     if (!source && href.startsWith('/') && !href.startsWith('//')) {
       localPath = href.split(/[?#]/)[0]!;
       if (browseRoot && localPath.startsWith(browseRoot + '/')) localPath = localPath.slice(browseRoot.length);

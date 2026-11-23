@@ -158,7 +158,9 @@ separately. No automatic cleanup removes a file still owned by another record.
 ## Files and embedded forms in preview
 
 From Core 0.3.45, stored PDF paths and imported aliases resolve through private
-preview media and open in a separate tab, outside the preview sandbox. A preview
+preview media and open in a separate tab, outside the preview sandbox. Core
+0.3.47 also resolves absolute private file links with fragments such as `#page=2`,
+preserving the requested position in the PDF. A preview
 does not require publishing the file publicly. If a PDF path cannot be matched
 to the media library, the preview explains that it is only available on the
 published website and offers that address when known.
