@@ -9,7 +9,7 @@ import { vendorExtensionAssets } from './source/extensions/assets';
 import { vendorThemeFonts, writeFrozenThemeFonts, type FrozenThemeFonts } from './source/extensions/theme-fonts';
 import type { ExtensionRuntimeSnapshot, FrozenExtensionMarkup } from '@typeroll/shared';
 
-export async function postprocess(dist: string, publication: { publication_id: string; previous_website_hosts?: string[]; robots_blocked?: boolean; site: { domain?: string; domain_alias?: string }; settings: { sitewide_noindex?: boolean; sitewide_nofollow?: boolean; ai_crawler_policy?: string; trailing_slash?: TrailingSlashPolicy; fonts?: { heading?: string; body?: string; mono?: string; delivery?: 'self_hosted' | 'google' } }; redirects?: Redirect[]; extensions?: ExtensionRuntimeSnapshot; theme_fonts?: FrozenThemeFonts; extension_markup?: FrozenExtensionMarkup }) {
+export async function postprocess(dist: string, publication: { bulk_redirects_enabled?: boolean; publication_id: string; previous_website_hosts?: string[]; robots_blocked?: boolean; site: { domain?: string; domain_alias?: string }; settings: { sitewide_noindex?: boolean; sitewide_nofollow?: boolean; ai_crawler_policy?: string; trailing_slash?: TrailingSlashPolicy; fonts?: { heading?: string; body?: string; mono?: string; delivery?: 'self_hosted' | 'google' } }; redirects?: Redirect[]; extensions?: ExtensionRuntimeSnapshot; theme_fonts?: FrozenThemeFonts; extension_markup?: FrozenExtensionMarkup }) {
   // App contract default markup was frozen with the publication: write it (and its files) before search indexing.
   if (publication.extension_markup) await writeExtensionMarkup(dist, publication.extension_markup);
   await bundleBlockAssets(dist);
@@ -61,7 +61,7 @@ export async function postprocess(dist: string, publication: { publication_id: s
     const text = await fs.readFile(html, 'utf8').catch(() => null);
     if (text !== null) await fs.writeFile(html, withoutMarkdownAlternate(text));
   }
-  const redirects = pagesRedirectsFile(safeRedirects, publication.settings, publication.site);
+  const redirects = pagesRedirectsFile(safeRedirects, publication.settings, publication.site, { bulkOverflow: publication.bulk_redirects_enabled === true });
   if (redirects) await fs.writeFile(path.join(dist, '_redirects'), redirects);
   await applyQueryRedirects(safeRedirects, {
     exists: relative => fs.access(path.join(dist, relative)).then(() => true, () => false),

@@ -1,3 +1,6 @@
+import { freezeMediaPreparation } from '../../../../../scripts/fixtures/static-publication/media-preparation.mjs';
+import { pagesRedirectsFile, pagesBulkRedirects } from '@typeroll/shared';
+import { preflightBulkRedirects, prepareBulkRedirects, publicationBulkRedirects, saveBulkPlan, readBulkPlan, verifyBulkRedirects, rollbackBulkRedirects, releaseStagedBulkRedirects, type BulkPlanReference } from './bulk-redirects';
 import { previousWebsiteHosts, preparePreviousHosts, retirePreviousHosts } from './previous-hosts';
 import { refreshBuildFailure } from '../builds/failure-status';
 import { journaledDomainProvider, armDomainCutover, recordDomainCutover, readDomainCutover, completeDomainCutover, rollbackDomainCutover } from './domain-cutover-journal';
@@ -70,6 +73,8 @@ import { claimCloudflareResource, generatedCloudflareNames } from './cloudflare-
 import { prepareStaticProject, saveStaticChecks, verifyStaticBatch, saveCustomerVerification, verifyCustomerCandidate, type CustomerVerification } from '../builds/publication';
 
 interface GitPublication extends CustomerVerification {
+  bulk_redirects?: BulkPlanReference;
+  bulk_activated?: boolean;
   candidate_prepared_at?: string; candidate_verified_id?: string | null; deployment_receipt?: any; project_prepared?: boolean; website_preparation?: import('./domain-provider').DomainPreparation | null; media_preparation?: import('./domain-provider').DomainPreparation | null; public_media_prepared?: boolean; traffic_applied?: boolean;
   /** Set only after this publication's media hosts were provisioned and served its exact files. The older boolean alone is never proof. */
   public_media_receipt?: { scope: string; verified_at: string; checked: number } | null;
@@ -113,7 +118,7 @@ async function pendingRedirect(jobPath: string, publication: GitPublication, pre
 }
 
 interface Target { job_id: string | null; lease_id: string | null; lease_until: number; last_publication?: GitPublication }
-export type GitJob = DeployJob & { media_delivery?: (import('./media-domain').MediaDeliveryPending & { checked_at: string }) | null; pages_domain?: PagesDomainObservation | null; cache_recovery?: CacheRecovery; failure?: { code: string; stage?: string } | null; verification_retry?: { request_id: string; requested_at: string; failure: any; candidate?: boolean; candidate_requeued?: boolean }; coordinator_retries?: number; observation_started_at?: string; git_publication?: GitPublication; publication_intent?: 'domain_prepare'; domain_revision?: string; engine_update?: EngineUpdateRecord; source_publication?: GitPublication; clear_authored_noindex?: boolean };
+export type GitJob = DeployJob & { bulk_rollback_required?: boolean; bulk_rollback_error?: string; media_delivery?: (import('./media-domain').MediaDeliveryPending & { checked_at: string }) | null; pages_domain?: PagesDomainObservation | null; cache_recovery?: CacheRecovery; failure?: { code: string; stage?: string } | null; verification_retry?: { request_id: string; requested_at: string; failure: any; candidate?: boolean; candidate_requeued?: boolean }; coordinator_retries?: number; observation_started_at?: string; git_publication?: GitPublication; publication_intent?: 'domain_prepare'; domain_revision?: string; engine_update?: EngineUpdateRecord; source_publication?: GitPublication; clear_authored_noindex?: boolean };
 /** One bounded queue attempt. Build waiting is durable queue backoff, never a sleeping Astro process. */
 export async function executeCustomerPublication(args: EnqueueArgs): Promise<DeployRunOutcome> {
   const attemptStarted = performance.now();
@@ -287,6 +292,15 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
   };
   try {
     await store.updateDoc(jobPath, { coordinator_observed_at: new Date().toISOString() });
+    if (job.bulk_rollback_required && job.git_publication) {
+      const pub = job.git_publication;
+      const ready = await rollbackBulkRedirects({ org: args.orgId, account: pub.account_id, site: args.siteId, version: args.versionId,
+        host: pub.website_host, publication: pub.publication_id, job: jobPath }, await cloudflareClient(args.orgId, fetch, undefined, pub.hosting_group_id ?? 'default'));
+      if (!ready) return await waitForPublicationCondition(jobPath, 'restoring static redirect overflow');
+      await store.updateDoc(jobPath, { status: 'failed', phase: 'previous traffic restored', error: job.bulk_rollback_error ?? 'The traffic switch was rolled back.', bulk_rollback_required: false, finished_at: new Date().toISOString() });
+      terminal = true; return 'ran';
+    }
+
     const currentDomains = await getSiteDomains(args.orgId, args.siteId);
     if (args.versionId === 'main' && currentDomains.state === 'distributing' && currentDomains.candidate?.job_id && currentDomains.candidate.job_id !== args.jobId) {
       await store.updateDoc(jobPath, { waiting_for_job_id: currentDomains.candidate.job_id, phase: 'waiting for the domain traffic switch' });
@@ -295,6 +309,10 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
     }
     if (currentDomains.rollback_requested && currentDomains.candidate && currentDomains.candidate.id === job.git_publication?.publication_id) {
       const rollback = await rollbackDomainCutover(args.orgId, args.siteId, currentDomains.candidate.id);
+      if (rollback?.state === 'rolled_back' && job.git_publication?.bulk_redirects) {
+        await store.updateDoc(jobPath, { bulk_rollback_required: true, bulk_rollback_error: 'The traffic switch was rolled back.', phase: 'restoring static redirect overflow' });
+        return await waitForPublicationCondition(jobPath, 'restoring static redirect overflow');
+      }
       await store.updateDoc(jobPath, { status: 'failed', phase: rollback?.state === 'rolled_back' ? 'previous traffic restored' : 'rollback needs attention', error: rollback?.errors.join(' ') || 'The traffic switch was rolled back.', finished_at: new Date().toISOString() });
       terminal = true; return 'ran';
     }
@@ -474,6 +492,14 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       frozen.redirects = [...collapseMediaHostChains(frozen.redirects ?? [], frozen.media_host_redirects, host), ...frozen.media_host_redirects.map(({ media_path_prefix: _prefix, ...rule }: any) => rule)];
       frozen.previous_website_hosts = args.versionId === 'main'
         ? previousWebsiteHosts(savedDomains, host, prior?.site_url ? new URL(prior.site_url).hostname : undefined) : [];
+      const selectedProvider = await selectedBuildProvider(args.orgId);
+      const engine = await readEngineConfiguration(args.orgId, selectedProvider);
+      const usable = engine?.status === 'ready' || (!!engine?.previous && (engine.status === 'preparing' || engine.status === 'qualifying'));
+      frozen.bulk_redirects_enabled = usable;
+      const redirectText = pagesRedirectsFile(frozen.redirects ?? [], frozen.settings, frozen.site, { bulkOverflow: true });
+      if (pagesBulkRedirects(redirectText).length && !usable) throw new ConnectionError('Finish shared build setup in Publishing → Builds before publishing static redirect overflow.', 409, 'bulk_redirect_build_engine_required');
+      if (pagesBulkRedirects(redirectText).length) await preflightBulkRedirects(args.orgId, group.id, cfConnection.cloudflare!.account_id, host,
+        await cloudflareClient(args.orgId, fetch, undefined, group.id));
       // Fonts are planned and copied now, so no build engine needs network access, Google or the Fonts library to render them.
       // A domain-only republication keeps the fonts its content was frozen with.
       if (!(job.publication_intent === 'domain_prepare' && frozen.settings?.font_plan)) {
@@ -481,8 +507,9 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
         frozen.settings = { ...frozen.settings, font_plan: siteFonts.plan };
         if (siteFonts.theme_fonts) frozen.theme_fonts = siteFonts.theme_fonts; else delete frozen.theme_fonts;
       }
+      frozen.media_preparation_scope = freezeMediaPreparation(frozen, prior, Boolean(priorPublication?.static_checks_key || priorPublication?.candidate_verified_id));
       // Content identity excludes wall-clock metadata so an unchanged publication can reuse the previous build.
-      const stable = { ...frozen, published_at: undefined, publication_id: undefined,
+      const stable = { ...frozen, media_preparation_scope: { ...frozen.media_preparation_scope, reused: undefined, cursor: undefined }, published_at: undefined, publication_id: undefined,
         // An explicit domain republication gets a fresh approval/journal identity,
         // including after rollback. Retries of this same job remain deterministic.
         ...(job.publication_intent === 'domain_prepare' ? { domain_transition_id: args.jobId } : {}) };
@@ -516,10 +543,7 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
         ...(job.source_publication ? {source_publication_id: job.source_publication.publication_id} : {}), website_host: host, snapshot_job_id: args.jobId, ...(redirectHosts.length ? { redirect_hosts: redirectHosts } : {}),
         // A domain-only candidate is cloned from the live snapshot, so it keeps the app versions live pages already call.
         extension_versions: publicationExtensionVersions(frozen), ...await saveSnapshot(args, frozen) };
-      const selectedProvider = await selectedBuildProvider(args.orgId);
-      const engine = await readEngineConfiguration(args.orgId, selectedProvider);
       // An engine update in progress (by another publication or an admin) is awaited before the build, not refused.
-      const usable = engine?.status === 'ready' || (!!engine?.previous && (engine.status === 'preparing' || engine.status === 'qualifying'));
       if (site?.publishing_migration && !usable) throw new ConnectionError('Restore the shared build engine before publishing this migrated site.', 409, 'shared_build_setup_required');
       if (selectedProvider === 'github' && !engine) throw new ConnectionError('Finish build setup in Publishing → Builds before deploying.', 409, 'shared_build_setup_required');
       if (engine && !usable) throw new ConnectionError('Finish shared build setup in Publishing → Builds before deploying.', 409, 'shared_build_setup_required');
@@ -597,6 +621,11 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       if (pages) {
         await store.updateDoc(jobPath, { phase: 'retrying public verification', verification_message: `${pages.message} Public verification will retry automatically.` });
         return await waitForPublicationCondition(jobPath, 'retrying public verification');
+      }
+      const bulk = await readBulkPlan(jobPath, publication.bulk_redirects);
+      if (bulk.length && !await verifyBulkRedirects({ org: args.orgId, account: publication.account_id, site: args.siteId, version: args.versionId,
+        host: publication.website_host, publication: publication.publication_id, job: jobPath }, bulk)) {
+        return await waitForPublicationCondition(jobPath, 'retrying public redirect verification');
       }
       await assertLease();
       return await finishPublication(publication, domains, frozen);
@@ -758,6 +787,18 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
             publication = prepared;
           }
         }
+        if (!publication.bulk_redirects) {
+          const snapshot = await readSnapshot(args, publication);
+          const bulk = publicationBulkRedirects(Buffer.from(result.direct.controls._redirects ?? '', 'base64').toString('utf8'), snapshot);
+          publication = { ...publication, bulk_redirects: await saveBulkPlan(jobPath, bulk) };
+          await store.updateDoc(jobPath, { git_publication: publication });
+        }
+        const bulk = await readBulkPlan(jobPath, publication.bulk_redirects);
+        if (!await prepareBulkRedirects({ org: args.orgId, account: publication.account_id, site: args.siteId, version: args.versionId,
+          host: publication.website_host, publication: publication.publication_id, job: jobPath }, bulk, cloudflare)) {
+          await store.updateDoc(jobPath, { phase: 'preparing static redirect overflow' });
+          return await waitForPublicationCondition(jobPath, 'preparing static redirect overflow');
+        }
         if (!deployment) {
           await assertLease();
           deployment = await finalizeDirectUpload(cloudflare, { account: publication.account_id, project: publication.project, branch: publication.branch, commit: publication.commit! }, result.direct);
@@ -874,6 +915,10 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       const ready = (!preparation.validation_blocker || windowCandidate) &&
         (preparation.certificate_ready || preparation.has_existing_traffic === false || windowCandidate) && !redirectBlockers.length &&
         (!mediaPreparation || mediaPreparation.certificate_ready || mediaPreparation.has_existing_traffic === false);
+      if (!await releaseStagedBulkRedirects({ org: args.orgId, account: publication.account_id, site: args.siteId, version: args.versionId,
+        host: publication.website_host, publication: publication.publication_id, job: jobPath })) {
+        return await waitForPublicationCondition(jobPath, 'releasing staged static redirect overflow');
+      }
       const recorded = await store.compareAndUpdateDoc<DomainConfiguration>(siteDomainConfigPath(args.orgId, args.siteId), current => current.revision === savedDomains.revision && current.state !== 'distributing', {
         published: { hosts, dns_mode: domains.dns_mode, publication_id: publication.publication_id, job_id: args.jobId },
         ...(matchesDesired ? { media_preparation: mediaPreparation, preparation, state: ready ? 'ready_to_switch' : 'preparing',
@@ -898,6 +943,14 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       parkedCandidate = matchesDesired;
       return 'ran';
     }
+    if (!publication.bulk_redirects && pagesBulkRedirects(pagesRedirectsFile(frozen.redirects ?? [], frozen.settings, frozen.site, { bulkOverflow: true })).length) {
+      throw new ConnectionError('The publication is missing its verified static redirect overflow plan. Retry the full publication.', 409, 'bulk_redirect_plan_missing');
+    }
+    if (preparingDomain && !publication.traffic_applied && publication.bulk_redirects && !await prepareBulkRedirects({ org: args.orgId, account: publication.account_id,
+      site: args.siteId, version: args.versionId, host: publication.website_host, publication: publication.publication_id, job: jobPath },
+      await readBulkPlan(jobPath, publication.bulk_redirects), cloudflare)) {
+      return await waitForPublicationCondition(jobPath, 'preparing static redirect overflow before traffic switch');
+    }
     if (preparingDomain && !publication.traffic_applied) await armDomainCutover(args.orgId, args.siteId, group.id, domains);
     const approvedRedirects = preparingDomain && !publication.traffic_applied && domains.cutover_approved_revision === domains.revision && domains.dns_mode === 'automatic'
       ? (domains.approved_redirect_preparations ?? []).filter(item => item.zone_id) : [];
@@ -921,8 +974,15 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       await applyRedirectTraffic(journaledDomainProvider(redirectDns.get(approved.hostname)!.provider, args.orgId, args.siteId, publication.publication_id, approved.hostname), approved);
       await recordDomainCutover(args.orgId, args.siteId, publication.publication_id, approved.hostname);
     }
-    if (!publication.traffic_applied) {
-      publication = { ...publication, traffic_applied: true };
+    const bulkRules = await readBulkPlan(jobPath, publication.bulk_redirects);
+    const bulkContext = { org: args.orgId, account: publication.account_id, site: args.siteId, version: args.versionId,
+      host: publication.website_host, publication: publication.publication_id, job: jobPath };
+    if (!await prepareBulkRedirects(bulkContext, bulkRules, cloudflare, true)) {
+      await store.updateDoc(jobPath, { phase: 'activating static redirect overflow' });
+      return await waitForPublicationCondition(jobPath, 'activating static redirect overflow');
+    }
+    if (!publication.traffic_applied || !publication.bulk_activated) {
+      publication = { ...publication, traffic_applied: true, bulk_activated: true };
       await store.updateDoc(jobPath, { git_publication: publication });
     }
     {
@@ -977,6 +1037,10 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       }
     }
     if (await pendingRedirect(jobPath, publication, redirectPreparations)) return await waitForPublicationCondition(jobPath, (await store.getDoc<GitJob>(jobPath))?.phase ?? 'provider');
+    if (bulkRules.length && !await verifyBulkRedirects(bulkContext, bulkRules)) {
+      await store.updateDoc(jobPath, { phase: 'verifying static redirect overflow' });
+      return await waitForPublicationCondition(jobPath, 'verifying static redirect overflow');
+    }
     return await finishPublication(publication, domains, frozen);
   } catch (error) {
     const target = await store.getDoc<Target>(targetPath);
@@ -1036,11 +1100,15 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       if (cutover?.state === 'armed') {
         const rollback = await rollbackDomainCutover(args.orgId, args.siteId, failedJob.git_publication.publication_id);
         rollbackMessage = rollback?.state === 'rolled_back' ? ' Previous DNS was restored automatically.' : ` Automatic rollback needs attention: ${rollback?.errors.join(' ')}`;
+        if (rollback?.state === 'rolled_back' && failedJob.git_publication.bulk_redirects) {
+          await store.updateDoc(jobPath, { bulk_rollback_required: true, bulk_rollback_error: message + rollbackMessage, failure, phase: 'restoring static redirect overflow' });
+          return await waitForPublicationCondition(jobPath, 'restoring static redirect overflow');
+        }
       }
     }
     const failedBuild = (await store.getDoc<GitJob>(jobPath))?.git_publication?.build_task_key;
     if (failedBuild) await new OrganizationBuildQueue().cancel(args.orgId, failedBuild);
-    await store.updateDoc(jobPath, { status: 'failed', phase: 'failed', finished_at: new Date().toISOString(),
+    await store.updateDoc(jobPath, { status: 'failed', phase: failedJob?.bulk_rollback_required ? 'rollback needs attention' : 'failed', finished_at: new Date().toISOString(),
       error: message + rollbackMessage, verification_message: failedJob?.verification_message ? message : null, failure });
     terminal = true;
     return 'ran';

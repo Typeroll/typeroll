@@ -100,7 +100,7 @@ export class ProviderTransportError extends Error {
 export function createProviderClient(provider, token, fetchImpl = fetch) {
   const base = provider === 'GitHub' ? GH : provider === 'Cloudflare' ? CF : null;
   if (!base || typeof token !== 'string' || !token) throw new Error('Missing provider credential');
-  return async (route, { method = 'GET', body, missing = false } = {}) => {
+  return async (route, { method = 'GET', body, missing = false, envelope = false } = {}) => {
     if (!route.startsWith('/') || route.startsWith('//') || /[\r\n]/.test(route)) {
       throw new Error('Invalid provider route');
     }
@@ -145,7 +145,7 @@ export function createProviderClient(provider, token, fetchImpl = fetch) {
     try { data = await response.json(); } catch { throw new Error(`${provider} returned an invalid response`); }
     if (provider === 'Cloudflare') {
       if (data.success !== true) throw new ProviderError(provider, response.status);
-      return data.result;
+      return envelope ? { result: data.result, result_info: data.result_info } : data.result;
     }
     return data;
   };

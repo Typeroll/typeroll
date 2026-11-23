@@ -1,3 +1,4 @@
+import { mapPublicationParts } from './publishing/parallel';
 import { withMediaFileOperation } from './media/file-publication';
 // Deleting the bytes behind a media record.
 //
@@ -156,13 +157,13 @@ async function deleteObject(orgId: string, object: MediaObject): Promise<void> {
  */
 export async function deleteMediaObjects(orgId: string, media: Media, options: { claims?: Pick<Claims, 'private_keys'> } = {}): Promise<MediaDeletionResult> {
   const result: MediaDeletionResult = { deleted: 0, failed: [], kept: [] };
-  for (const object of mediaObjects(media)) {
+  await mapPublicationParts(mediaObjects(media), async object => {
     // Originals are content-addressed (`originals/<sha256>/<name>`): the same
     // file imported twice shares one object, which must outlive this record.
     const referencedBy = options.claims?.private_keys.get(object.key);
     if (referencedBy && referencedBy !== media.id) {
       result.kept.push({ key: object.key, source: object.source, referenced_by: referencedBy });
-      continue;
+      return;
     }
     try {
       await deleteObject(orgId, object);
@@ -174,7 +175,7 @@ export async function deleteMediaObjects(orgId: string, media: Media, options: {
         reason: error instanceof Error ? error.message : 'Unknown error',
       });
     }
-  }
+  }, 4);
   return result;
 }
 
@@ -328,6 +329,12 @@ async function deleteMediaItemLocked(orgId: string, siteId: string, mediaId: str
     body: {
       ok: true, media_id: mediaId, complete, incomplete_reasons: [...reasons], objects_deleted: privateObjects.deleted,
       private_objects: { deleted: privateObjects.deleted, failed: privateObjects.failed, kept: privateObjects.kept },
+      protection: {
+        reason: reasons.has('objects_protected') ? 'referenced_by_other_media' : null,
+        referenced_by_media_ids: [...new Set([...copies.objects.filter(object => object.status === 'protected').map(object => object.referenced_by), ...privateObjects.kept.map(object => object.referenced_by)].filter(Boolean))],
+        public_urls_retained: [...new Set(copies.objects.filter(object => object.status === 'protected' && object.bucket === 'public').flatMap(object => object.urls ?? []))],
+        next_step: reasons.has('objects_protected') ? 'These files belong to another media record too. Keep that record to keep its files public. After deleting the remaining record, retry remove_published_media_copies with this deleted media id.' : null,
+      },
       private_copies: privateCopiesSummary(copies),
       public_copies: publicCopies,
       removal: { state: saved.state, unpurged_urls: saved.unpurged_urls },

@@ -13,12 +13,12 @@
 // Granting a permission enables nothing by itself: Analytics stays off for
 // every Site until it is enabled for that Site.
 
-import { CLOUDFLARE_ANALYTICS_PROVISION_SCOPE, CLOUDFLARE_ANALYTICS_READ_SCOPE, CLOUDFLARE_REDIRECT_SCOPES, enabledCloudflareOptionalScopes } from './cloudflare-config';
+import { CLOUDFLARE_ANALYTICS_PROVISION_SCOPE, CLOUDFLARE_ANALYTICS_READ_SCOPE, CLOUDFLARE_REDIRECT_SCOPES, CLOUDFLARE_BULK_REDIRECT_SCOPES, enabledCloudflareOptionalScopes } from './cloudflare-config';
 import { getConnection, openCredentials, type Connection } from './connections';
 import { getHostingGroup, listHostingGroups } from './hosting-groups';
 import type { CloudflareStoredCredentials } from './cloudflare-oauth';
 
-export type CloudflareCapabilityId = 'analytics_provisioning' | 'analytics_reports' | 'redirect_rules';
+export type CloudflareCapabilityId = 'analytics_provisioning' | 'analytics_reports' | 'redirect_rules' | 'bulk_redirects';
 /**
  * available — the connection may do it.
  * approval_required — this deployment requests the missing scopes; one permission update adds them.
@@ -29,6 +29,11 @@ export type CloudflareCapabilityId = 'analytics_provisioning' | 'analytics_repor
 export type CloudflareCapabilityState = 'available' | 'approval_required' | 'not_offered' | 'unknown' | 'connection_required';
 
 export const CLOUDFLARE_CAPABILITIES: Record<CloudflareCapabilityId, { scopes: string[]; permission: string; token_permission: string; enables: string }> = {
+  bulk_redirects: {
+    scopes: CLOUDFLARE_BULK_REDIRECT_SCOPES, permission: 'Bulk URL Redirects and Account Filter Lists (read and edit)',
+    token_permission: 'Account → Bulk URL Redirects → Edit and Account → Account Filter Lists → Edit',
+    enables: 'Publish exact-path redirect overflow while keeping the Site static',
+  },
   analytics_provisioning: {
     scopes: [CLOUDFLARE_ANALYTICS_PROVISION_SCOPE], permission: 'Account Settings (edit)', token_permission: 'Account → Account Settings → Edit',
     enables: 'Create a Site’s Cloudflare Web Analytics site when Analytics is enabled for that Site',
@@ -106,6 +111,7 @@ export function permissionUpdateStep(groupId: string, groupName: string, missing
 function notOfferedStep(capability: CloudflareCapabilityId, missing: string[]): string {
   const operator = `This Typeroll installation does not request ${missing.join(', ')} when connecting Cloudflare; its operator must allow the scope${missing.length > 1 ? 's' : ''} on the OAuth client and list ${missing.length > 1 ? 'them' : 'it'} in TYPEROLL_PUBLISH_CLOUDFLARE_OPTIONAL_SCOPES.`;
   if (capability === 'redirect_rules') return `${operator} Until then set_publishing_domains returns the Single Redirect rule to create in Cloudflare (redirect_rule_required) and Typeroll verifies the public 301.`;
+  if (capability === 'bulk_redirects') return `${operator} Publications exceeding Pages redirect capacity need these permissions and a proxied website hostname in the hosting account.`;
   return `${operator} Until then “Approve Analytics access” on a Site’s Analytics module requests it separately${capability === 'analytics_provisioning' ? ', or you can paste the token of a Web Analytics site created in that account as beacon_token' : ''}.`;
 }
 

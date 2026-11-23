@@ -348,7 +348,7 @@ export function renderBlock(block: Block, options: RenderBlocksOptions): string 
   let html = renderBlockContent(block, options);
   // Transparent global/conditional/composed blocks pass through their children's markers.
   const type = getRegistryEntry(options.registry, block.type);
-  if (site?.footer_spacing != null && block.type !== GLOBAL_BLOCK_TYPE_ID && !['core/show_if', 'template/show_if'].includes(block.type) && (!type || !isComposedBlockType(type))) {
+  if ((site?.footer_spacing != null || site?.footer_min_spacing != null) && block.type !== GLOBAL_BLOCK_TYPE_ID && !['core/show_if', 'template/show_if'].includes(block.type) && (!type || !isComposedBlockType(type))) {
     const effective = applyRouteOverrides(block, options.context?.route);
     html = injectAttrsIntoFirstTag(html, footerSpacingAttributes(effective, (site.styles ?? []) as SiteStyle[]));
   }
@@ -2144,10 +2144,10 @@ function numericPresentationValue(field: FieldDefinition, raw: unknown): string 
   const scale = tokenScale(field);
   const token = scale && scaleValue(scale, raw);
   if (token) return token;
-  if (field.type !== 'number' || !['px', 'number'].includes(field.css_unit ?? '') ||
+  if (field.type !== 'number' || !['px', 'em', 'number'].includes(field.css_unit ?? '') ||
       !/^[a-z][a-z0-9_]*$/.test(field.name) || typeof raw !== 'number' || !Number.isFinite(raw)) return undefined;
   const value = Math.min(field.max ?? 10000, Math.max(field.min ?? 0, raw));
-  return `${value}${field.css_unit === 'px' ? 'px' : ''}`;
+  return `${value}${field.css_unit === 'number' ? '' : field.css_unit}`;
 }
 
 /** A field added in a later render version renders nothing on older sites. */

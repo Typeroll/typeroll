@@ -3,6 +3,18 @@ title: Publishing with your own accounts
 description: Connect GitHub, Cloudflare, domains and media once per organization, then publish static sites from Typeroll.
 ---
 
+:::note[Media preparation from Core 0.3.45]
+“Preparing media” checks durable preparation receipts and can read storage once
+per file; it is not just a local count. A later build can skip this preparation
+pass when a completed prior publication proves that the entire media scope and
+recipe are unchanged. Source bytes, storage keys, buckets, aliases and retained
+media participate in that scope. The first build establishing this evidence,
+or a changed scope, still prepares normally. Materialization and publication
+verification continue checking the selected files; preparation reuse is not a
+claim that a file remains publicly reachable. The build API reports
+`prepared_reused` separately from completed preparation.
+:::
+
 This workflow applies to Typeroll Cloud and self-hosted installations with
 customer publishing enabled. Cloud users connect their own accounts; Typeroll
 operates the publisher authorization service. Self-hosting operators must first

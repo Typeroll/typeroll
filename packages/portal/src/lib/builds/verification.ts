@@ -1,3 +1,4 @@
+import { pagesBulkRedirects } from '@typeroll/shared';
 import { createHash, randomUUID } from 'node:crypto';
 import { verifyResponseBody } from './static-verifier.mjs';
 import { assertPublicDestination, parsePublicHttpsUrl } from '../extensions/public-http';
@@ -54,7 +55,7 @@ export function staticManifestChecks(files: Record<string, { sha256: string; siz
     checks.push({ route, status: 200, sha256: bytes.sha256, ...(bytes.size === undefined ? {} : { size: bytes.size }) });
   }
   const rules = redirectsText.split('\n').map(line => line.trim().split(/\s+/));
-  const redirects = rules.map(rule => rule[0]);
+  const redirects = [...rules.map(rule => rule[0]), ...pagesBulkRedirects(redirectsText).map(rule => rule.from_path)];
   // A retained media URL must resolve to the exact replacement bytes, not just
   // disappear from the deletion checks because a redirect was declared.
   const assets = new Map(checks.map(check => [check.route, check]));

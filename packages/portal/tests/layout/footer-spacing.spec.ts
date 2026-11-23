@@ -8,6 +8,14 @@ function html(blocks: Block[], settings: SiteSettings, page: Partial<Page> = {})
   return `<!doctype html><html><head><meta name="viewport" content="width=device-width"><style>${PLATFORM_LAYER_ORDER_CSS}</style><style>body{margin:0}p{margin:0}footer{padding:20px;background:#123;color:white}</style><style>${siteThemeCss(settings)}\n${platformLayer('content', contentWellCss(settings.render_version!), settings.render_version)}\n${assets.css}</style><style>${footerSpacingCss(settings, page)}</style></head><body><main class="page-content page-content--blocks">${renderBlocks(blocks, { registry, renderVersion: settings.render_version, context: { site: siteContext(settings as unknown as Record<string, unknown>) } })}</main><footer>Site footer</footer></body></html>`;
 }
 for (const width of [375, 768, 1280]) {
+  test(`the theme minimum survives a zero-padded final container at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 800 });
+    const settings = { ...defaultSiteSettings, render_version: 20, footer_min_spacing: { mobile: 32, laptop: 64 } } as SiteSettings;
+    await page.setContent(html([container({ padding_bottom_px: 0 })], settings));
+    expect(await page.evaluate(() => document.querySelector('footer')!.getBoundingClientRect().top - document.querySelector('.last-copy')!.getBoundingClientRect().bottom)).toBeCloseTo(width < 1024 ? 32 : 64, 0);
+    await page.setContent(html([container({ padding_bottom_px: 0 })], settings, { footer_spacing: 'none' }));
+    expect(await page.evaluate(() => document.querySelector('footer')!.getBoundingClientRect().top - document.querySelector('.last-copy')!.getBoundingClientRect().bottom)).toBeCloseTo(0, 0);
+  });
   test(`footer spacing follows site scale at ${width}px without adding container defaults`, async ({ page }) => {
     await page.setViewportSize({ width, height: 800 });
     const settings = { ...defaultSiteSettings, render_version: 20, footer_spacing: { mobile: 32, laptop: 64 } } as SiteSettings;

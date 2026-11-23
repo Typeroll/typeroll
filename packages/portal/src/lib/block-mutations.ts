@@ -8,7 +8,7 @@
 // updates and what the server ultimately persists.
 
 import { randomUUID } from 'node:crypto';
-import { buildCoreBlockRegistry, ensureBlockIds, type Block, type BlockType } from '@typeroll/shared';
+import { buildCoreBlockRegistry, ensureBlockIds, preserveHeadingAnchors, type Block, type BlockType } from '@typeroll/shared';
 
 let coreRegistry: Map<string, BlockType> | null = null;
 
@@ -161,7 +161,7 @@ export function updateBlock(
   if (!found) throw new BlockMutationError(`Block not found: ${args.block_id}`, 'not_found');
   if (args.data) {
     const data: Record<string, unknown> = { ...found.block.data, ...args.data };
-    if (args.null_removes) for (const [key, value] of Object.entries(args.data)) if (value === null) delete data[key];
+    if (args.null_removes) for (const [key, value] of Object.entries(args.data)) if (value === null && !(key === 'anchor_id' && ['core/heading', 'core/rich_heading'].includes(found.block.type))) delete data[key];
     found.block.data = data;
   }
   if (args.style_overrides !== undefined) found.block.style_overrides = args.style_overrides;
@@ -173,7 +173,7 @@ export function updateBlock(
     if (n) found.block.name = n;
     else delete found.block.name;
   }
-  return tree;
+  return preserveHeadingAnchors(blocks, tree);
 }
 
 /**

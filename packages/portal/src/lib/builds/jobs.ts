@@ -1,3 +1,4 @@
+import { mediaPreparationScope } from '../../../../../scripts/fixtures/static-publication/media-preparation.mjs';
 import { DIRECT_RECEIPT, validateDirectReceipt } from './direct-upload.mjs';
 import { randomUUID } from 'node:crypto';
 import { paths, type DeployJob } from '@typeroll/shared';
@@ -33,7 +34,9 @@ export async function enqueueBuild(config: EngineConfiguration, identity: Omit<B
   } : {};
   const supportsMediaBatches = files['scripts/media.mjs']?.includes('export async function prepareMediaBatch(');
   const mediaTotal = kind === 'static_verification' ? JSON.parse(files['verification.json']).checks.length : supportsMediaBatches ? (publication?.media_manifest?.entries?.length ?? 0) + (publication?.retained_media_manifests ?? []).reduce((sum: number, manifest: any) => sum + manifest.entries.length, 0) : 0;
-  const queued = await new OrganizationBuildQueue().enqueue(frozen, config.revision, mediaTotal, kind === 'static_verification' || kind === 'media_preparation' ? kind : undefined);
+  const scope = publication && kind === 'publication' ? mediaPreparationScope(publication) : null;
+  const reuse = scope && publication.media_preparation_scope?.reused === true && publication.media_preparation_scope.scope === scope.scope && publication.media_preparation_scope.recipe === scope.recipe && scope.total === mediaTotal ? mediaTotal : 0;
+  const queued = await new OrganizationBuildQueue().enqueue(frozen, config.revision, mediaTotal, kind === 'static_verification' || kind === 'media_preparation' ? kind : undefined, reuse);
   await getStore().createDocIfMissing(buildInputPath(identity.org_id, queued.key), { ...validation, source_key: sourceKey, kind, storage_account_id: config.account_id, provider: config.provider ?? 'cloudflare',
     ...(options.directUpload === false ? { direct_upload: false } : {}) } satisfies BuildInput);
   if (options.requeueFailed && ['failed', 'cancelled'].includes(queued.task.status)) {

@@ -5,6 +5,13 @@ import { renderBlocks } from '../render-blocks.js';
 import type { Block } from '../types.js';
 const ending = (padding: unknown = 0): Block => ({ id: 'end', type: 'core/container', data: { padding_bottom_px: padding }, children: [{ id: 'text', type: 'core/prose', data: { html: '<p>Final paragraph</p>' } }] });
 describe('shared footer spacing', () => {
+  it('provides an independent responsive minimum even for block-owned zero padding', () => {
+    const css = footerSpacingCss({ footer_min_spacing: { mobile: 32, laptop: 64 } }, {});
+    expect(css).toContain('.page-content--blocks{padding-block-end:32px}');
+    expect(css).toContain('.page-content--blocks{padding-block-end:64px}');
+    expect(footerSpacingCss({ footer_min_spacing: 64 }, { footer_spacing: 'none' })).not.toContain('64px');
+    expect(footerSpacingWarnings([ending(0)], {}, [], 64)).toEqual([]);
+  });
   it('validates responsive tokens and bounded px without accepting arbitrary CSS', () => {
     for (const value of ['xl', 0, 72, { mobile: 'lg', desktop: 'xl' }]) expect(footerSpacingError(value)).toBeNull();
     for (const value of ['48px', -1, 321, {}, { phone: 'xl' }, { mobile: 'wrong' }, '0;display:none']) expect(footerSpacingError(value)).toBeTruthy();

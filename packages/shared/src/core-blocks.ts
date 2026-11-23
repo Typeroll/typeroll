@@ -182,10 +182,10 @@ if (!columns.styles!.includes(COLUMN_STACK_CSS)) throw new Error('columns styles
 columns.render_versions = [{ from: 16, styles: columns.styles!.replace(COLUMN_STACK_CSS, COLUMN_STACK_CSS_V16) }];
 
 const PROSE_STYLES = `
-[data-block="prose"] { min-width: 0; line-height: var(--line_height, var(--page-body-line-height, var(--body-leading-text, 1.65))); font-size: var(--font_size_px, var(--page-body-font-size, var(--body-size, clamp(1rem, 0.95rem + 0.25vw, 1.125rem)))); text-align:var(--text_align,inherit); font-weight:var(--font_weight,inherit); overflow-wrap: anywhere; }
+[data-block="prose"] { min-width: 0; line-height: var(--line_height, var(--page-body-line-height, var(--body-leading-text, 1.65))); font-size: var(--font_size_px, var(--font_size, var(--page-body-font-size, var(--body-size, clamp(1rem, 0.95rem + 0.25vw, 1.125rem))))); --font_size:initial; --paragraph_spacing:initial; text-align:var(--text_align,inherit); font-weight:var(--font_weight,inherit); overflow-wrap: anywhere; }
 [data-block="prose"][data-w="narrow"] { max-width: 38rem; margin-inline: auto; }
 [data-block="prose"][data-w="wide"] { max-width: 60rem; margin-inline: auto; }
-[data-block="prose"] p { margin: 0 0 var(--paragraph_spacing_px,var(--page-body-paragraph-spacing, 1em)); }
+[data-block="prose"] p { margin: 0 0 var(--paragraph_spacing_px,var(--paragraph_spacing,var(--page-body-paragraph-spacing, 1em))); }
 [data-block="prose"][data-font="body"] { font-family:var(--font-body,inherit); }
 [data-block="prose"][data-font="heading"] { font-family:var(--font-heading,inherit); }
 [data-block="prose"][data-font="mono"] { font-family:var(--font-mono,monospace); }
@@ -251,6 +251,10 @@ const prose: BlockType = {
     { name: 'html', type: 'richtext', label: 'Content' },
     ...typographyFields,
     pixels('paragraph_spacing_px', 'Paragraph spacing (px)', 0, 160),
+    // Imported templates used these names before prose adopted px fields.
+    // Keep their original units; an em value must never be renamed to px.
+    { name: 'font_size', type: 'number', css_unit: 'px', design_token: 'type_size', min: 12, max: 160, responsive: true, editor_group: 'advanced', label: 'Legacy text size (px)', help: 'Use font_size_px for new content. The px field takes precedence.' },
+    { name: 'paragraph_spacing', type: 'number', css_unit: 'em', design_token: 'space', min: 0, max: 3, responsive: true, editor_group: 'advanced', label: 'Legacy paragraph spacing (em)', help: 'Preserved in em. Use paragraph_spacing_px for new content; do not rename this value without converting its units.' },
     { name: 'text_align', type: 'select', label: 'Text alignment', options: ['inherit', 'start', 'center', 'end', 'justify'], default: 'inherit', responsive: true },
     { name: 'font_weight', type: 'select', label: 'Text weight', options: ['inherit', '400', '500', '600', '700'], default: 'inherit', responsive: true },
     { name: 'font', type: 'select', label: 'Font family', options: ['inherit', 'body', 'heading', 'display', 'accent', 'mono'], default: 'inherit' },

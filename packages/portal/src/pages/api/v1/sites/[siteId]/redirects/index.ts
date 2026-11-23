@@ -10,7 +10,7 @@ import { paths, pagesRedirectCapacity } from '@typeroll/shared';
 import { checkRedirectBatch, checkRedirectWrite, loadRedirectWriteContext } from '../../../../../../lib/redirect-write';
 import type { RedirectBatchRule } from '../../../../../../lib/redirect-write';
 
-/** One call stays well inside Cloudflare Pages' 2,100-rule limit per site. */
+/** Bound request validation; total Site capacity is checked after expansion. */
 const MAX_BATCH = 1000;
 
 export const GET: APIRoute = async ({ request, params }) => {
@@ -97,8 +97,9 @@ export const PUT: APIRoute = async ({ request, params }) => {
   for (const rule of rules) merged.set(rule.from_path, { ...(merged.get(rule.from_path) ?? {}), ...rule } as any);
   const settings = await vstore.settings(ctx.orgId, ctx.siteId, ctx.versionId);
   const counted = pagesRedirectCapacity([...merged.values()], { trailing_slash: settings?.trailing_slash });
-  const capacityWarning = counted.over_limit ? `After this batch the site emits ${counted.static} static and ${counted.dynamic} dynamic redirect rules (with slash aliases); Cloudflare Pages allows ${counted.limit_static} and ${counted.limit_dynamic}, so publishing will fail with publication_redirect_limit. Consolidate rules, or point old file addresses at fewer targets.`
-    : counted.remaining_static < 100 ? `After this batch only ${counted.remaining_static} of ${counted.limit_static} static redirect rules remain; publication also adds media replacement rules.` : null;
+  const capacityWarning = counted.dynamic > counted.limit_dynamic ? `This Site emits ${counted.dynamic} dynamic rules after slash expansion; Pages allows ${counted.limit_dynamic}. Bulk Redirects cannot replace arbitrary patterns.`
+    : counted.bulk_required ? `This Site needs Bulk Redirects for at least ${counted.overflow_static} exact-path rules after slash expansion. Publishing retains every rule and requires Bulk access, account quota and a proxied website hostname in the hosting account. Publication also adds media replacement rules.`
+    : counted.remaining_static < 100 ? `Only ${counted.remaining_static} static Pages rules remain. Additional exact-path rules use Bulk Redirects when the hosting account is ready; publication also adds media replacement rules.` : null;
   const capacity = { ...counted, ...(capacityWarning ? { warning: capacityWarning } : {}) };
   // All or nothing: a batch with one invalid rule writes none of them.
   if (dryRun || failed.length) {

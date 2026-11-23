@@ -120,8 +120,8 @@ export class TyperollClient {
   put<T>(siteId: string, path: string, body?: unknown, query?: Record<string, string | number | undefined>): Promise<T> {
     return this.request<T>('PUT', this.url(siteId, path, query), body);
   }
-  del<T>(siteId: string, path: string, query?: Record<string, string | number | undefined>): Promise<T> {
-    return this.request<T>('DELETE', this.url(siteId, path, query));
+  del<T>(siteId: string, path: string, query?: Record<string, string | number | undefined>, body?: unknown): Promise<T> {
+    return this.request<T>('DELETE', this.url(siteId, path, query), body);
   }
 
   // ── Root helpers ───────────────────────────────────────────────────────

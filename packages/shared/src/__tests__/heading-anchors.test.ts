@@ -6,9 +6,21 @@ import { describe, expect, it } from 'vitest';
 import { buildCoreBlockRegistry } from '../core-blocks.js';
 import { renderBlocks } from '../render-blocks.js';
 import { prepareHeadingOutline } from '../heading-outline.js';
-import { headingAnchorChanges, headingAnchors, type Block } from '../index.js';
+import { headingAnchorChanges, headingAnchors, preserveHeadingAnchors, type Block } from '../index.js';
 
 const registry = buildCoreBlockRegistry();
+it('preserves block heading addresses on wording changes without dirtying an unchanged tree', () => {
+  const before: Block[] = [{ id: 'one', type: 'core/heading', data: { text: 'Old title', level: 'h2' } }, { id: 'two', type: 'core/heading', data: { text: 'Old title', level: 'h2' } }];
+  expect(preserveHeadingAnchors(before, before)).toEqual(before);
+  const after = structuredClone(before); after[0]!.data.text = 'New title';
+  const pinned = preserveHeadingAnchors(before, after);
+  expect(headingAnchors({ blocks: pinned }).map(a => a.id)).toEqual(['old-title', 'old-title-2']);
+  expect(before[0]!.data).not.toHaveProperty('anchor_id');
+  after[0]!.data.anchor_id = 'intentional';
+  expect(preserveHeadingAnchors(before, after)[0]!.data.anchor_id).toBe('intentional');
+  after[0]!.data.anchor_id = null;
+  expect(headingAnchors({ blocks: preserveHeadingAnchors(before, after) })[0]!.id).toBe('new-title');
+});
 const body = (blocks: Block[]) => ({ content_mode: 'blocks', blocks });
 
 const tree = (): Block[] => [

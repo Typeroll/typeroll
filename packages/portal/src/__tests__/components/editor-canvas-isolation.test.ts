@@ -48,7 +48,7 @@ describe('editor canvas frames', () => {
   it('are sandboxed and carry a random per-mount canvas id', async () => {
     await act(async () => root.render(createElement(HtmlPageEditor, { siteId: 'site', page: htmlPage, previewUrl: '/api/sites/site/preview/page', lastDeployedAt: null })));
     const frame = container.querySelector('iframe[title="Page preview"]')!;
-    expect(frame.getAttribute('sandbox')).toBe('allow-scripts allow-forms allow-popups');
+    expect(frame.getAttribute('sandbox')).toBe('allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox');
     const canvas = new URL(frame.getAttribute('src')!, 'https://cms.example.test').searchParams.get('canvas')!;
     expect(canvas).toMatch(/^html-[0-9a-f]{32}$/);
     expect(canvas).not.toContain('site');

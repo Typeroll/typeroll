@@ -3,9 +3,8 @@
 // A heading without an explicit id (`anchor_id` on core/heading and
 // core/rich_heading, an `id` attribute on a heading in prose or HTML) gets one
 // generated from its text when the page renders (heading-outline.ts). Editing
-// the text silently changes the id and breaks every inbound `#` link; this
-// reports that on the write, instead of pinning ids, which would change how
-// existing sites render.
+// the text can change that id. Page writes pin existing block heading ids
+// by identity; prose and HTML headings still report changes for review.
 //
 // The ids come from prepareHeadingOutline itself, over the body's heading
 // sources in document order, so slugs and duplicate suffixes match the
@@ -113,6 +112,26 @@ export function headingAnchors(body: PageBody): HeadingAnchor[] {
     });
   }
   return out;
+}
+
+/** Keep an existing block heading's public address when its wording changes.
+ * Identity is the block id, not array position. A supplied anchor (including
+ * null to request regeneration) remains the author's explicit choice.
+ */
+export function preserveHeadingAnchors(before: Block[], after: Block[]): Block[] {
+  const previous = new Map(headingAnchors({ blocks: before }).filter(anchor => anchor.block_id && HEADING_BLOCKS.has(anchor.block_type ?? '')).map(anchor => [anchor.block_id!, anchor]));
+  const next = structuredClone(after);
+  const generated = new Map(headingAnchors({ blocks: after }).map(anchor => [anchor.block_id, anchor.id]));
+  const visit = (blocks: Block[]) => {
+    for (const block of blocks) {
+      const old = previous.get(block.id);
+      if (old && old.block_type === block.type && generated.get(block.id) !== old.id && !Object.hasOwn(block.data ?? {}, 'anchor_id')) block.data = { ...block.data, anchor_id: old.id };
+      if (block.children) visit(block.children);
+      for (const slot of block.slots ?? []) visit(slot);
+    }
+  };
+  visit(next);
+  return next;
 }
 
 /**

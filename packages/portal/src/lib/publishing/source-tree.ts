@@ -70,7 +70,7 @@ export async function freezePublicationRenderer(coreCommit: string): Promise<voi
 /** No package resolution or Astro build runs on the CMS publication request. */
 export async function publicationSourceTree(publication: any): Promise<Record<string, string>> {
   // The dry-run path reaches this before pushing any source or starting a build.
-  try { pagesRedirectsFile(publication.redirects ?? [], publication.settings, publication.site); }
+  try { pagesRedirectsFile(publication.redirects ?? [], publication.settings, publication.site, { bulkOverflow: publication.bulk_redirects_enabled === true }); }
   catch (error) { throw new ConnectionError(error instanceof Error ? error.message : 'Invalid publication redirects.', 409, 'publication_redirect_limit'); }
   const template = await templateFor(publication.core_commit);
   const content = template.files['scripts/content.mjs'] ? publicationContentFiles(publication) : { 'publication.json': stableJson(publication) };

@@ -1,3 +1,4 @@
+import { freezeMediaPreparation } from '../../../../../scripts/fixtures/static-publication/media-preparation.mjs';
 // Publication job for hosted sites (`publishing_mode: hosted`).
 //
 // A sibling of customer-runner.ts, not a branch inside it: there is no Git
@@ -233,7 +234,8 @@ export async function executeHostedPublication(args: EnqueueArgs): Promise<Deplo
       const siteFonts = await freezeSiteFonts(frozen, prior?.theme_fonts, { orgId: args.orgId, siteId: args.siteId });
       frozen.settings = { ...frozen.settings, font_plan: siteFonts.plan };
       if (siteFonts.theme_fonts) frozen.theme_fonts = siteFonts.theme_fonts; else delete frozen.theme_fonts;
-      frozen.publication_id = digest(JSON.stringify({ ...frozen, published_at: undefined, publication_id: undefined }));
+      frozen.media_preparation_scope = freezeMediaPreparation(frozen, prior, Boolean(priorPublication?.deployed));
+      frozen.publication_id = digest(JSON.stringify({ ...frozen, media_preparation_scope: { ...frozen.media_preparation_scope, reused: undefined, cursor: undefined }, published_at: undefined, publication_id: undefined }));
       if (args.dryRun) {
         await publicationSourceTree(frozen);
         assertDryRunValidation(frozen.pages ?? []);

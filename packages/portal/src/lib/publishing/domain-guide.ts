@@ -1,3 +1,6 @@
+import { preflightBulkRedirects } from './bulk-redirects';
+import { cloudflareClient } from './cloudflare-oauth';
+import { pagesBulkRedirects } from '@typeroll/shared';
 import { readPreviousHosts, repairPreviousHostRedirects } from './previous-hosts';
 import { buildMigrationLaunchReport } from '../migration-launch-report';
 import { Resolver } from 'node:dns/promises';
@@ -80,8 +83,13 @@ export async function readDomainGuide(org: string, site: string) {
   try {
     const publication = await resolvePublicationVersion(org, site, 'main');
     mainSettings = (publication.settings ?? {}) as Record<string, unknown>;
-    const content = pagesRedirectsFile(publication.redirects, publication.settings ?? {}, { domain: config.desired.website_host ?? undefined });
-    checks.push({ id: 'redirect_capacity', status: 'ready', message: 'Redirect rules fit Cloudflare Pages limits after expansion.', details: { ...checkPagesRedirects(content), limits: PAGES_REDIRECT_LIMITS, bytes: Buffer.byteLength(content) } });
+    const content = pagesRedirectsFile(publication.redirects, publication.settings ?? {}, { domain: config.desired.website_host ?? undefined }, { bulkOverflow: true });
+    const overflow = pagesBulkRedirects(content);
+    if (overflow.length) {
+      const permissions = await cloudflarePermissionReport(org, group.id);
+      await preflightBulkRedirects(org, group.id, permissions.account_id!, config.desired.website_host!, await cloudflareClient(org, fetch, undefined, group.id));
+    }
+    checks.push({ id: 'redirect_capacity', status: 'ready', message: overflow.length ? `${overflow.length} exact-path rules use static Bulk Redirects. Account capacity is checked when the list is staged before activation.` : 'Redirect rules fit Cloudflare Pages limits after expansion.', details: { ...checkPagesRedirects(content), bulk_redirects: overflow.length, limits: PAGES_REDIRECT_LIMITS, bytes: Buffer.byteLength(content) } });
   } catch (error) { checks.push({ id: 'redirect_capacity', status: 'action_required', message: error instanceof Error ? error.message : 'The publication could not be exported.' }); }
   // Authored noindex would hide the site once it moves to its real host. The platform already blocks
   // indexing of the temporary address, so this is almost always left over from the migration.

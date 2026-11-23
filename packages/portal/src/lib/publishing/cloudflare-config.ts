@@ -17,13 +17,14 @@ export const CLOUDFLARE_ANALYTICS_READ_SCOPE = 'account-analytics.read';
 export const CLOUDFLARE_ANALYTICS_SCOPES = [CLOUDFLARE_ANALYTICS_PROVISION_SCOPE, CLOUDFLARE_ANALYTICS_READ_SCOPE];
 /** Single Redirect rules (redirect hosts such as www) are the `http_request_dynamic_redirect` phase: Dynamic URL Redirects. */
 export const CLOUDFLARE_REDIRECT_SCOPES = ['dynamic-redirect.read', 'dynamic-redirect.write'];
+export const CLOUDFLARE_BULK_REDIRECT_SCOPES = ['account-rule-lists.read', 'account-rule-lists.write', 'mass-url-redirects.read', 'mass-url-redirects.write'];
 /**
  * Optional scopes an operator may add to Connect Cloudflare. Cloudflare refuses the whole sign-in (`invalid_scope`)
  * when a scope is not allowed for the OAuth client, so each deployment lists the ones its client allows in
  * TYPEROLL_PUBLISH_CLOUDFLARE_OPTIONAL_SCOPES (space or comma separated). Unset: Connect Cloudflare requests exactly
  * what it did before these existed, and Analytics access is approved per Site as before.
  */
-export const CLOUDFLARE_ONBOARDING_OPTIONAL_SCOPES = [...CLOUDFLARE_ANALYTICS_SCOPES, ...CLOUDFLARE_REDIRECT_SCOPES];
+export const CLOUDFLARE_ONBOARDING_OPTIONAL_SCOPES = [...CLOUDFLARE_ANALYTICS_SCOPES, ...CLOUDFLARE_REDIRECT_SCOPES, ...CLOUDFLARE_BULK_REDIRECT_SCOPES];
 export const CLOUDFLARE_OPTIONAL_SCOPES_ENV = 'TYPEROLL_PUBLISH_CLOUDFLARE_OPTIONAL_SCOPES';
 /** The optional scopes this deployment requests with every Connect Cloudflare. Unknown values are ignored. */
 export function enabledCloudflareOptionalScopes(): string[] {

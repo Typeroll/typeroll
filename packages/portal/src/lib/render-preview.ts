@@ -821,6 +821,14 @@ function resolvePreviewMedia(html: string, orgId: string, siteId: string, opts: 
 async function resolvePreviewMediaDocument(html: string, orgId: string, siteId: string, opts: PreviewOptions) {
   const { applySiteMediaReplacements } = await import('./media/replacement');
   html = await applySiteMediaReplacements(html, orgId, siteId);
+  if (/<a\b[^>]*href\s*=\s*["'][^"']*(?:\.pdf(?:[?#"'])|\/api\/sites\/[^/]+\/media\/)/i.test(html)) {
+    const { rewritePreviewFileLinks } = await import('./preview-media');
+    const media = await getStore().listDocs<import('@typeroll/shared').Media>(paths.media(orgId, siteId), { filters: [{ field: 'mime_type', op: '==', value: 'application/pdf' }] });
+    const { getSiteDomains } = await import('./publishing/domain-config');
+    const domains = await getSiteDomains(orgId, siteId);
+    const host = domains.active?.website_host;
+    html = rewritePreviewFileLinks(html, media, opts.browseRoot, host ? `https://${host}` : undefined);
+  }
   if (opts.sharedMediaToken) return html;
   const { authorizePreviewMedia } = await import('./publishing/media-storage');
   return authorizePreviewMedia(html, orgId, siteId);

@@ -95,6 +95,9 @@ export const POST: APIRoute = async ({ request, cookies, params, redirect, local
   const footerEntries = BREAKPOINT_ORDER.flatMap(bp => { const value = String(form.get(`footer_spacing.${bp}`) ?? '').trim(); return value ? [[bp, /^\d+(?:\.\d+)?$/.test(value) ? Number(value) : value]] : []; });
   const footer_spacing = footerEntries.length ? Object.fromEntries(footerEntries) as SiteSettings['footer_spacing'] : undefined;
   if (includesSection('design') && footer_spacing !== undefined) { const error = footerSpacingError(footer_spacing); if (error) return new Response(error, { status: 400 }); }
+  const footerMinimumEntries = BREAKPOINT_ORDER.flatMap(bp => { const value = String(form.get(`footer_min_spacing.${bp}`) ?? '').trim(); return value ? [[bp, /^\d+(?:\.\d+)?$/.test(value) ? Number(value) : value]] : []; });
+  const footer_min_spacing = footerMinimumEntries.length ? Object.fromEntries(footerMinimumEntries) as SiteSettings['footer_min_spacing'] : undefined;
+  if (includesSection('design') && footer_min_spacing !== undefined) { const error = footerSpacingError(footer_min_spacing); if (error) return new Response(error, { status: 400 }); }
   const contentWidthEntries = (['narrow', 'normal', 'wide'] as const).flatMap(key => {
     const value = String(form.get(`content_widths.${key}`) ?? '').trim();
     return value ? [[key, Number(value)] as const] : [];
@@ -139,6 +142,7 @@ export const POST: APIRoute = async ({ request, cookies, params, redirect, local
     time_zone: (() => { const value = String(form.get('time_zone') ?? '').trim(); return value && !timeZoneError(value) ? value : siteTimeZone({ time_zone: existing.time_zone, language: form.get('language') ?? existing.language }); })(),
     content_widths,
     footer_spacing,
+    footer_min_spacing,
     // full is the default and is stored as an absent value.
     motion: form.get('motion') === 'reduced' ? 'reduced' : undefined,
     sitewide_noindex: form.get('sitewide_noindex') === 'on',

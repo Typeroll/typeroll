@@ -44,6 +44,8 @@ describe('REST reference', () => {
 
     expect(rows('update_partial')).toEqual(['path:partial_id', 'body:name', 'body:html_content', 'body:blocks', 'body:status', 'body:kind', 'body:…', 'body:save', 'query:version']);
     expect(rows('read_working_copy')).toEqual(['path:kind', 'path:id', 'query:version']);
+    expect(rows('delete_media_batch')).toContain('body:media_ids');
+    expect(rows('delete_media_batch')).not.toContain('query:media_ids');
 
     // No tool lists `target` or `patch` as a body key it does not send.
     for (const entry of entries) {

@@ -1,5 +1,17 @@
 import { describe, it, expect } from 'vitest';
-import { rewritePreviewMediaUrls } from '../../lib/preview-media';
+import { rewritePreviewMediaUrls, rewritePreviewFileLinks } from '../../lib/preview-media';
+import type { Media } from '@typeroll/shared';
+
+it('opens imported PDF links through private preview media without confusing foreign files or site navigation', () => {
+  const media = [{ id: 'pdf', mime_type: 'application/pdf', cdn_url: 'https://portal.test/api/sites/mysite/media/pdf/content', public_path: '/media/template.pdf', source_aliases: ['https://live.test/media/template.pdf'] }] as Media[];
+  const source = '<a href="/preview/mysite/media/template.pdf?t=review#page=2">Template</a><a href="https://foreign.test/media/template.pdf">Foreign</a>';
+  const html = rewritePreviewFileLinks(source, media, '/preview/mysite');
+  expect(html).toContain('href="https://portal.test/api/sites/mysite/media/pdf/content#page=2"');
+  expect(html).toContain('data-preview-file-link="1" target="_blank" rel="noopener noreferrer"');
+  expect(html).toContain('href="https://foreign.test/media/template.pdf"');
+  expect(html).toContain('>Foreign</a>');
+  expect(rewritePreviewMediaUrls(html, 'mysite', TOKEN)).toContain('/preview/mysite/media/pdf?token=');
+});
 
 const TOKEN = 'tok.en/+=';
 const signed = (id: string) => `/preview/mysite/media/${id}?token=${encodeURIComponent(TOKEN)}`;
@@ -36,4 +48,14 @@ describe('rewritePreviewMediaUrls', () => {
     ].join('');
     expect(rewritePreviewMediaUrls(html, 'mysite', TOKEN)).toBe(html);
   });
+});
+
+it('explains unavailable PDF paths and links to the published file only when its hostname is known', () => {
+  const html = '<a href="/preview/mysite/media/missing.pdf?t=review">Template</a>';
+  const pending = rewritePreviewFileLinks(html, [], '/preview/mysite');
+  expect(pending).toContain('aria-disabled="true"');
+  expect(pending).toContain('only available on the published website');
+  const live = rewritePreviewFileLinks(html, [], '/preview/mysite', 'https://live.test');
+  expect(live).toContain('href="https://live.test/media/missing.pdf"');
+  expect(live).not.toContain('?t=review');
 });

@@ -136,3 +136,34 @@ See [SEO for your site](../seo/).
   the share images.
 - After publishing, open the page and confirm the images load from the site's
   media address.
+
+## Agent batch deletion and protected files
+
+From Core 0.3.45 / MCP 0.45.148, `delete_media_batch` accepts 1–20 explicit
+`media_ids` (`DELETE /api/v1/sites/{siteId}/media`, JSON body). It uses the same
+write permission, file leases and protection checks as individual deletion,
+with bounded concurrency. Inspect every result; HTTP 207 means at least one
+item failed, was missing or retained copies. Successful items are still deleted.
+Repeating a deleted id reports 404; use `remove_published_media_copies` to retry
+its remaining copies.
+
+`objects_protected` means another media record still uses those bytes. It is
+not a successful removal of the public file. The `protection` object lists
+`referenced_by_media_ids`, `public_urls_retained` and the next step. Keeping the
+other record intentionally keeps its shared files public. Delete it only when
+the owner wants that file removed too, then retry leftover copies by the deleted
+media id. Original objects, prepared variants and public aliases are reported
+separately. No automatic cleanup removes a file still owned by another record.
+
+## Files and embedded forms in preview
+
+From Core 0.3.45, stored PDF paths and imported aliases resolve through private
+preview media and open in a separate tab, outside the preview sandbox. A preview
+does not require publishing the file publicly. If a PDF path cannot be matched
+to the media library, the preview explains that it is only available on the
+published website and offers that address when known.
+
+External forms may restrict embedding to the published hostname. The preview
+shows an expanded explanation before the iframe, with a separate provider
+link, even if the provider leaves the iframe blank. A frame load event does
+not prove that its form loaded. The preview keeps its origin isolation.

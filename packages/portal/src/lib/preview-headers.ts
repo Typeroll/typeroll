@@ -31,7 +31,7 @@
  * back exactly the access this header exists to remove, and the whole
  * mitigation silently becomes a no-op.
  */
-export const PREVIEW_SANDBOX = 'sandbox allow-scripts allow-forms allow-popups';
+export const PREVIEW_SANDBOX = 'sandbox allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox';
 
 /**
  * Return the browser-visible origin for a request that may have crossed a

@@ -18,6 +18,7 @@ export interface BuildTask {
   claimed_at?: number;
   media_total?: number;
   media_cursor?: number;
+  media_reused?: number;
   media_batches?: number;
   /** Set once the coordinator ran the task again after handing over its artifact failed (refused or timed out). */
   artifact_upload_retried?: boolean;
@@ -79,12 +80,13 @@ const rejected = () => new ConnectionError('This build attempt has expired or wa
 /** Organization-scoped queue, backed by the existing transactional datastore. */
 export class OrganizationBuildQueue {
   constructor(private store: ReadWriteStore = getStore(), private clock = Date.now) {}
-  async enqueue(identity: BuildIdentity, engineRevision: string, mediaTotal = 0, purpose?: 'static_verification' | 'media_preparation') {
+  async enqueue(identity: BuildIdentity, engineRevision: string, mediaTotal = 0, purpose?: 'static_verification' | 'media_preparation', preparedMedia = 0) {
     if (!Number.isSafeInteger(mediaTotal) || mediaTotal < 0 || mediaTotal > (purpose === 'static_verification' ? 40000 : 20000)) throw new ConnectionError('Invalid media preparation size.', 400);
+    if (!Number.isSafeInteger(preparedMedia) || preparedMedia < 0 || preparedMedia > mediaTotal || purpose && preparedMedia) throw new ConnectionError('Invalid prepared media reuse.', 400);
     assertBuildIdentity(identity);
     const key = purpose === 'static_verification' ? sha256(`${buildTaskKey(identity)}\0verification\0${identity.source_sha256}`) : buildTaskKey(identity), path = `${buildTasksPath(identity.org_id)}/${key}`;
     const task: BuildTask = { identity, engine_revision: engineRevision, status: 'queued', created_at: this.clock(), queued_at: this.clock(), deadline: this.clock() + (mediaTotal ? MEDIA_BUILD_DEADLINE_MS : 45 * 60_000),
-      media_total: mediaTotal, media_cursor: 0, media_batches: 0, ...(purpose === 'media_preparation' ? { background: true } : {}),
+      media_total: mediaTotal, media_cursor: preparedMedia, media_reused: preparedMedia, media_batches: 0, ...(purpose === 'media_preparation' ? { background: true } : {}),
       attempt: 0, lease_id: null, lease_until: 0, token_hash: null, artifact_sha256: null, artifact_key: null, error_code: null };
     await this.store.createDocIfMissing(path, task);
     const existing = await this.store.getDoc<BuildTask>(path);
@@ -99,7 +101,7 @@ export class OrganizationBuildQueue {
     const now = this.clock();
     await this.store.compareAndUpdateDoc<BuildTask>(path, value => value.status === existing.status && value.engine_revision === existing.engine_revision && value.attempt === existing.attempt, {
       engine_revision: engineRevision, status: 'queued', queued_at: now, deadline: now + (existing.media_total ? MEDIA_BUILD_DEADLINE_MS : 45 * 60_000),
-      media_cursor: 0, media_batches: 0, attempt: 0, lease_id: null, lease_until: 0, token_hash: null, artifact_sha256: null, artifact_key: null, error_code: null, error_detail: null });
+      media_cursor: existing.media_reused ?? 0, media_batches: 0, attempt: 0, lease_id: null, lease_until: 0, token_hash: null, artifact_sha256: null, artifact_key: null, error_code: null, error_detail: null });
     return this.store.getDoc<BuildTask>(path);
   }
   async claim(org: string, engineRevision: string, protocol: number, expected?: { key: string; dispatch_id: string }) {

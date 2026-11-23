@@ -47,7 +47,7 @@ import { dateFormatError, siteTimeZone, timeZoneError, contentWidthsError, typog
 
 const TOP_LEVEL = new Set([
   'typography', 'design_scales', 'agent_instructions', 'responsive_breakpoints', 'site_name', 'tagline', 'logo', 'favicon', 'apple_touch_icon', 'icon_192', 'trailing_slash', 'iframe_allowed_hosts', 'default_seo_suffix',
-  'default_meta_description', 'language', 'robots_txt', 'ai_crawler_policy', 'header_behavior', 'date_format', 'time_zone', 'content_widths', 'footer_spacing', 'motion', 'image_sizes_default',
+  'default_meta_description', 'language', 'robots_txt', 'ai_crawler_policy', 'header_behavior', 'date_format', 'time_zone', 'content_widths', 'footer_spacing', 'footer_min_spacing', 'motion', 'image_sizes_default',
   'sitewide_noindex', 'sitewide_nofollow', 'seo_review', 'external_routes', 'render_version',
   // Social sharing + Organization JSON-LD, as in the portal Settings form.
   'default_og_image', 'twitter_handle', 'organization',
@@ -230,6 +230,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   if (body.time_zone !== undefined && body.time_zone !== null) { const error = timeZoneError(body.time_zone); if (error) return apiError(error, 400); }
   if (body.motion !== undefined && body.motion !== null && body.motion !== 'full' && body.motion !== 'reduced') return apiError('motion must be "full" or "reduced"', 400);
   if (body.footer_spacing != null) { const error = footerSpacingError(body.footer_spacing); if (error) return apiError(error, 400, ctx, { code: 'field_type_mismatch' }); }
+  if (body.footer_min_spacing != null) { const error = footerSpacingError(body.footer_min_spacing); if (error) return apiError(error, 400, ctx, { code: 'field_type_mismatch' }); }
   if (body.content_widths !== undefined && body.content_widths !== null) { const error = contentWidthsError(body.content_widths); if (error) return apiError(error, 400); }
   if (body.sitewide_noindex !== undefined && typeof body.sitewide_noindex !== 'boolean') {
     return apiError('sitewide_noindex must be boolean', 400);
@@ -337,7 +338,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
       // null clears an optional field; the store drops undefined values.
       // A site always has a time zone: null resets it to the usual one for its language.
       if (k === 'time_zone' && v === null) { update[k] = siteTimeZone({ language: body.language ?? existing.language }); continue; }
-      update[k] = v === null && (CLEARABLE_STRINGS as readonly string[]).concat('organization', 'language_sections', 'ai_crawler_policy', 'header_behavior', 'date_format', 'content_widths', 'footer_spacing', 'motion').includes(k) || (k === 'motion' && v === 'full') ? undefined : v;
+      update[k] = v === null && (CLEARABLE_STRINGS as readonly string[]).concat('organization', 'language_sections', 'ai_crawler_policy', 'header_behavior', 'date_format', 'content_widths', 'footer_spacing', 'footer_min_spacing', 'motion').includes(k) || (k === 'motion' && v === 'full') ? undefined : v;
     } else if (SITE_LEVEL.has(k)) {
       continue;
     } else {
