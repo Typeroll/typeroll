@@ -1184,7 +1184,7 @@ error, for example `Build log: Error: Cannot find module …`. The deploy job's
 `failure.provider_log` keeps the last 60 lines, whether the build or the
 verification of its output failed, and the Cloudflare build ID. Values that look
 like credentials are removed; digests and commit IDs are kept. Resolve the cause,
-then retry publishing. A status refresh does not start a replacement build. Brief distribution checks can continue after upload until
+then retry publishing. A status refresh does not create a replacement publication. Brief distribution checks can continue after upload until
 the exact static files are publicly available; the live link remains hidden
 until verification succeeds.
 
@@ -1418,6 +1418,13 @@ capacity. Waiting is normal and does not fail the publication. The step's
 working time starts when a runner claims it, so a long queue does not shorten
 the build.
 
+From Core 0.3.51, Cloudflare runner requests also wait while earlier work is
+queued or another step in the Organization is running on the same provider.
+Waiting for that work does not consume build-start attempts. Keep the existing
+publication; it requests its runner when its turn arrives. This change takes
+effect when the Typeroll installation is updated and requires no build-engine
+update.
+
 While a step is queued, `build_progress.queue` in the deploy status (and
 `queue` on each queued job in `GET /api/v1/publishing/builds`) says why:
 
@@ -1435,7 +1442,7 @@ background media preparation is running on the same build account)". Typeroll
 does not know who else uses the provider account and does not claim to.
 
 The publication rechecks its own step while it waits. If the provider stopped
-the build before a runner claimed the step, Typeroll starts it again. From Core 0.3.43 (pending release), verification starts continue with bounded backoff after the
+the build before a runner claimed the step, Typeroll starts it again. From Core 0.3.43, verification starts continue with bounded backoff after the
 normal three-start limit, until the six-hour queue deadline. A running or
 uncertain provider attempt is never duplicated. After the deadline,
 `build_queue_timeout` requires an explicit verification retry. Completed media

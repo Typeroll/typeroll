@@ -104,6 +104,9 @@ it('does not count a dispatch whose runner served another step of the organizati
   advance(MINUTE);
   await getStore().updateDoc(buildInputPath('org', waiting), { dispatch_attempt: 3, dispatch_lease_until: 0 });
   await dispatchPendingBuild('org', waiting, config);
+  expect(provider.dispatch).not.toHaveBeenCalled();
+  await getStore().updateDoc(`${buildTasksPath('org')}/${other}`, { status: 'completed' });
+  await dispatchPendingBuild('org', waiting, config);
   expect(provider.dispatch).toHaveBeenCalledOnce();
   // Waiting its turn is not a failed start: the step stays queued, the count unchanged.
   expect(await getStore().getDoc(buildInputPath('org', waiting))).toMatchObject({ dispatch_id: 'dispatch-2', dispatch_attempt: 3 });
@@ -116,6 +119,38 @@ it('still fails the start when no runner claimed any step after the dispatch', a
   advance(MINUTE);
   await getStore().updateDoc(buildInputPath('org', key), { dispatch_attempt: 3, dispatch_lease_until: 0 });
   await expect(dispatchPendingBuild('org', key, config)).rejects.toMatchObject({ code: 'shared_runner_start_failed' });
+});
+
+it('keeps a stopped dispatch queued while an earlier claimed runner still works', async () => {
+  const active = await enqueue('active', 'publication', {}, 900);
+  expect((await queue().claim('org', config.revision, BUILD_PROTOCOL))!.key).toBe(active);
+  advance(MINUTE);
+  const waiting = await enqueue('waiting', 'publication', { dispatch_started_at: now, dispatch_attempt: 3 }, 100);
+  provider.status = 'stopped';
+  await expect(dispatchPendingBuild('org', waiting, config)).resolves.toBeUndefined();
+  expect(provider.dispatch).not.toHaveBeenCalled();
+  expect(await task(waiting)).toMatchObject({ status: 'queued', attempt: 0, error_code: null });
+});
+
+it('waits behind older queued work before requesting another shared runner', async () => {
+  const first = await enqueue('first');
+  advance(MINUTE);
+  const waiting = await enqueue('waiting', 'publication', { dispatch_id: undefined });
+  provider.status = 'stopped';
+  await dispatchPendingBuild('org', waiting, config);
+  expect(provider.dispatch).not.toHaveBeenCalled();
+  await getStore().updateDoc(`${buildTasksPath('org')}/${first}`, { status: 'completed' });
+  await dispatchPendingBuild('org', waiting, config);
+  expect(provider.dispatch).toHaveBeenCalledOnce();
+  expect(await getStore().getDoc(buildInputPath('org', waiting))).toMatchObject({ dispatch_attempt: 1 });
+});
+
+it('does not wait behind an expired unclaimed step', async () => {
+  await enqueue('expired');
+  advance(QUEUED_BUILD_LIMIT_MS + MINUTE);
+  const waiting = await enqueue('waiting', 'publication', { dispatch_id: undefined });
+  await dispatchPendingBuild('org', waiting, config);
+  expect(provider.dispatch).toHaveBeenCalledOnce();
 });
 
 it('still claims interactive work before background media preparation', async () => {

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.51 (candidate, MCP 0.45.150)
+
+- Wait for earlier queued or active organization work before requesting a
+  shared Cloudflare runner. Keep busy queues from exhausting build-start
+  attempts before their turn, while retaining real start failures and queue
+  deadlines. No customer build-engine update is required.
+
 ## 0.3.50 (candidate, MCP 0.45.150)
 
 - Preserve matching server and browser CSS in the media library and picker,
