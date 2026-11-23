@@ -64,7 +64,7 @@ export const mediaTools: ToolDef[] = [
   },
   {
     name: 'list_media',
-    description: 'List uploaded media items (CDN URLs, alt text, mime). Newest first, cursor-paginated.',
+    description: 'List media records (CDN URLs, alt text, mime, import status and readiness). Unfinished or failed imports remain listed for repair; only choose entries with readiness.selectable true. Newest first, cursor-paginated.',
     inputSchema: {
       limit: z.number().int().min(1).max(200).optional(),
       cursor: z.string().optional(),
@@ -88,7 +88,7 @@ export const mediaTools: ToolDef[] = [
   },
   {
     name: 'read_media',
-    description: 'Read one media item\'s metadata by id. For a file imported from a URL, import reports { state: pending | complete | failed, error_code, message, retry { automatic, next_attempt_at, failed_attempts } }; poll it after upload_media_from_url answers import.state "pending".',
+    description: 'Read one media item\'s metadata by id. readiness reports state (ready, pending or failed), selectable and message; only use selectable files for new content references. For a file imported from a URL, import reports { state: pending | complete | failed, error_code, message, retry { automatic, next_attempt_at, failed_attempts } }; poll it after upload_media_from_url answers import.state "pending".',
     inputSchema: { media_id: z.string() },
     handler: withErrorBoundary(async (args, { client, siteId }) => {
       const res = await client.get(siteId, `media/${encodeURIComponent(args.media_id)}`);
@@ -113,7 +113,7 @@ export const mediaTools: ToolDef[] = [
   {
     name: 'upload_media_from_url',
     description:
-      'Fetch an image (or PDF) from any public URL and push it to the site\'s media library in one call. The organization\'s media transfer Worker downloads the source from verified public HTTP(S) destinations straight into the organization\'s storage; private addresses and unsafe redirects are refused. Integrity-safe: the bytes are streamed, never transcribed as base64 through the model, so (unlike a large `upload_media_inline` payload) they can\'t be silently corrupted in transit. Returns { media_id, cdn_url, filename, finalize, import }. When the media record was created but the copy failed for a passing reason (a busy or rate-limited source, an interrupted transfer, a transfer Worker 5xx), the call answers HTTP 202 with import.state "pending", import.error_code, import.retry { automatic: true, next_attempt_at } and finalize null: the site\'s media migration retries the copy after 1, 5, 15, 30 and 60 minutes. Do not import it again; poll read_media until import.state is "complete" before referencing the file in published content. A refused source (4xx) is an error and leaves no record. Each upload queues image preparation (finalize.preparation): one job per site on the organization\'s shared build engine, started once uploads have been quiet for 30 s (at most 5 min after the first), so a series of uploads shares one job. get_media_preparation returns its build_job_id; let it finish, like any other active build, before publishing another site of the organization.',
+      'Fetch an image (or PDF) from any public URL and push it to the site\'s media library in one call. The organization\'s media transfer Worker downloads the source from verified public HTTP(S) destinations straight into the organization\'s storage; private addresses and unsafe redirects are refused. Integrity-safe: the bytes are streamed, never transcribed as base64 through the model, so (unlike a large `upload_media_inline` payload) they can\'t be silently corrupted in transit. Returns { media_id, cdn_url, filename, finalize, import }. When the media record was created but the copy failed for a passing reason (a busy or rate-limited source, an interrupted transfer, a transfer Worker 5xx), the call answers HTTP 202 with import.state "pending", import.error_code, import.retry { automatic: true, next_attempt_at } and cdn_url/finalize null: the site\'s media migration retries the copy after 1, 5, 15, 30 and 60 minutes. Do not import it again; poll read_media until import.state is "complete" before referencing the file in published content. A refused source (4xx) is an error and leaves no new record; an existing pending record is retained with import.state failed and automatic retries stopped. Each upload queues image preparation (finalize.preparation): one job per site on the organization\'s shared build engine, started once uploads have been quiet for 30 s (at most 5 min after the first), so a series of uploads shares one job. get_media_preparation returns its build_job_id; let it finish, like any other active build, before publishing another site of the organization.',
     inputSchema: {
       source_url: z.string().url().describe('Public URL to download the image from.'),
       filename: z.string().optional().describe('Override the filename used on R2. Defaults to the last path segment of source_url. When its extension does not match the content type, the type\'s extension is appended; the response returns the stored filename.'),
@@ -130,7 +130,7 @@ export const mediaTools: ToolDef[] = [
   {
     name: 'upload_media_batch_from_urls',
     description:
-      'Upload 1–50 public images/PDFs (max 25 MiB each) in one MCP call. Uses the same integrity-safe download → signed PUT → finalize pipeline as upload_media_from_url, with four concurrent workers. Returns one result per source URL; individual failures do not abort the batch. A result with pending: true has a media record whose copy is retried automatically (see upload_media_from_url); `pending` counts them. Uploads queue image preparation as upload_media_from_url describes; consecutive batches share one preparation job while each starts within 30 s of the previous one.',
+      'Upload 1–50 public images/PDFs (max 25 MiB each) in one MCP call. Uses the same integrity-safe download → signed PUT → finalize pipeline as upload_media_from_url, with four concurrent workers. Returns one result per source URL; individual failures do not abort the batch. A result with pending: true has a media record whose copy is retried automatically (see upload_media_from_url); `pending` counts them; `succeeded` counts only completed imports. Uploads queue image preparation as upload_media_from_url describes; consecutive batches share one preparation job while each starts within 30 s of the previous one.',
     inputSchema: {
       items: z.array(z.object({
         source_url: z.string().url(),
@@ -157,7 +157,7 @@ export const mediaTools: ToolDef[] = [
       await Promise.all(workers);
       return ok({
         results,
-        succeeded: results.filter((result) => result.ok === true).length,
+        succeeded: results.filter((result) => result.ok === true && result.pending !== true).length,
         failed: results.filter((result) => result.ok === false).length,
         pending: results.filter((result) => result.pending === true).length,
       });

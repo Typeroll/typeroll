@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { Media } from '@typeroll/shared';
+import { mediaReadiness } from '../lib/media/readiness';
 import { finalizeUpload } from '../lib/media/client-upload';
 import { filterMedia, mediaKind, MediaKindFilter, MediaThumb, mediaThumbStyles, type MediaFilter, type MediaKind } from './MediaThumb';
 
@@ -36,14 +37,18 @@ export default function MediaPicker({ value, onChange, siteId, id, label, theme 
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!open || items.length > 0) return;
+    if (!open) return;
+    let cancelled = false;
     setLoading(true);
+    setError(null);
     fetch(`/api/sites/${siteId}/media`)
-      .then((r) => r.json())
-      .then((data) => setItems(Array.isArray(data) ? data : []))
-      .catch(() => setError('Could not load the media library.'))
-      .finally(() => setLoading(false));
-  }, [open, items.length, siteId]);
+      .then((r) => { if (!r.ok) throw new Error('Could not load the media library.'); return r.json(); })
+      .then((data) => { if (!cancelled) setItems(Array.isArray(data) ? data : []); })
+      .catch(() => { if (!cancelled) { setItems([]); setError('Could not load the media library.'); } })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    // Reopening refreshes imports that completed since the previous selection.
+    return () => { cancelled = true; };
+  }, [open, siteId]);
 
   async function uploadFile(file: File) {
     setUploading(true);
@@ -127,14 +132,16 @@ export default function MediaPicker({ value, onChange, siteId, id, label, theme 
                   key={m.id}
                   className="media-picker__tile"
                   aria-pressed={m.cdn_url === value}
-                  title={m.alt_text || m.filename}
+                  disabled={!mediaReadiness(m).selectable}
+                  title={mediaReadiness(m).message ?? (m.alt_text || m.filename)}
                   onClick={() => {
+                    if (!mediaReadiness(m).selectable) return;
                     onChange(m.cdn_url);
                     setOpen(false);
                   }}
                 >
                   <MediaThumb item={m} size={120} />
-                  {mediaKind(m) !== 'image' && <span className="media-picker__name">{m.filename}</span>}
+                  {(mediaKind(m) !== 'image' || !mediaReadiness(m).selectable) && <span className="media-picker__name">{m.filename}</span>}
                 </button>
               ))}
             </div>
@@ -166,6 +173,7 @@ export default function MediaPicker({ value, onChange, siteId, id, label, theme 
         .media-picker__grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(88px, 1fr)); gap: .5rem; }
         .media-picker__tile { padding: 0; border: 2px solid transparent; background: #e4e4e7; border-radius: .375rem; overflow: hidden; cursor: pointer; }
         .media-picker__tile:hover, .media-picker__tile[aria-pressed="true"] { border-color: #818cf8; }
+        .media-picker__tile:disabled { cursor: not-allowed; opacity: .65; }
         .media-picker__tile { display: grid; gap: 2px; text-align: start; color: inherit; }
         .media-picker__name { padding: 2px 4px 4px; font-size: .7rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .media-picker--dark .media-picker__tile { background: #27272a; }
@@ -185,6 +193,7 @@ export default function MediaPicker({ value, onChange, siteId, id, label, theme 
 /** The chosen file: an image or a playable video, or the file's thumbnail and name. */
 function Selected({ value, items, kind }: { value: string; items: Media[]; kind: PickerKind }) {
   const item = items.find((m) => m.cdn_url === value);
+  if (item && !mediaReadiness(item).selectable) return <p className="media-picker__error" role="status">{mediaReadiness(item).message}</p>;
   const shown = item ? mediaKind(item) : kind === 'video' || /\.(mp4|webm|mov|m4v)(?:$|[?#])/i.test(value) ? 'video' : kind === 'image' || /\.(png|jpe?g|gif|webp|avif|svg)(?:$|[?#])/i.test(value) ? 'image' : 'other';
   if (shown === 'image') return <img className="media-picker__chosen" src={value} alt="" />;
   if (shown === 'video') return <video className="media-picker__chosen" src={value} controls muted playsInline preload="metadata" />;

@@ -33,6 +33,8 @@ import { vstore } from './version-store';
 import { snapshotRevision, revisionEffect, pruneRevisions } from './revisions';
 import { assertStructureChange, structureLockApplies, StructureLockedError } from './structure-lock';
 import { sanitizeBody } from './sanitize';
+import { mediaReferenceIssue } from './media/write-readiness';
+import { privateMediaReferences } from './media/readiness';
 import { buildMediaLookup, transformBodyForSeo, lintBodyForSeo } from './seo-transform';
 import { PROVENANCE_KEY, applyFieldAuthority, conflictResponse, type WriteActor } from './field-authority';
 import { markSiteDirty } from './auto-deploy';
@@ -247,6 +249,11 @@ export async function mergeWorkingCopy(
     fields = { ...fields, html_content: await sanitizeSiteHtml(ctx, fields.html_content) };
   }
   const existing = await readWorkingCopy(ctx, target);
+  if (privateMediaReferences(fields).length) {
+    const saved = await savedStructureBase(ctx, target);
+    const mediaIssue = await mediaReferenceIssue(ctx, fields, overlayWorkingCopy(saved ?? {}, existing));
+    if (mediaIssue) throw new WorkingCopyError(mediaIssue.message, 409, mediaIssue.code, mediaIssue.details);
+  }
   if (await structureLockApplies(ctx)) {
     const saved = await savedStructureBase(ctx, target);
     await checkStructure(ctx, target, fields, { ...(saved ?? {}), ...(existing?.fields ?? {}) });
@@ -405,6 +412,8 @@ export async function commitWorkingCopy(
     if (wc.answer_base && !isDeepStrictEqual(wc.answer_base, { fields: existing.fields ?? {}, provenance: existing._provenance ?? {} }))
       throw new WorkingCopyError('Structured answers changed after this draft started. Reload and review the current answers before saving.', 409);
     const update: Record<string, unknown> = { ...await measureRequestStep('content_validation', () => filterWcFields(ctx, target, wc.fields)), date_updated: now };
+    const mediaIssue = await mediaReferenceIssue(ctx, update, existing);
+    if (mediaIssue) throw new WorkingCopyError(mediaIssue.message, 409, mediaIssue.code, mediaIssue.details);
     const type = await pageContentType(ctx, existing);
     {
       if (!type) throw new WorkingCopyError('Content type not found', 400);
@@ -472,6 +481,8 @@ export async function commitWorkingCopy(
     const existing = await vstore.partial(ctx.orgId, ctx.siteId, ctx.versionId, target.id);
     await checkStructure(ctx, target, wc.fields, existing);
     const update: Record<string, unknown> = { ...wc.fields, date_updated: now };
+    const mediaIssue = await mediaReferenceIssue(ctx, update, existing);
+    if (mediaIssue) throw new WorkingCopyError(mediaIssue.message, 409, mediaIssue.code, mediaIssue.details);
     if (typeof update.html_content === 'string') {
       const settings = await vstore.settings(ctx.orgId, ctx.siteId, ctx.versionId);
       update.html_content = sanitizeBody(update.html_content as string, settings?.iframe_allowed_hosts);

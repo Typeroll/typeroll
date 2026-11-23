@@ -13,6 +13,8 @@ const BODY_LIMIT = 2048;
 /** Worker error codes and what they mean. Each keeps its own code, so a caller can tell a busy source from a refused one. */
 const TRANSFER_ERRORS: Record<string, string> = {
   media_source_unavailable: 'The original file could not be downloaded. Check that it is still accessible on the source site.',
+  media_source_empty: 'The source returned no file bytes. Check the original address or import a replacement file.',
+  media_source_redirect: 'The source redirect could not be followed safely. Import the file from its final public address.',
   media_source_temporarily_unavailable: 'The source site did not deliver the file just now (a server error or rate limit). The file was not copied.',
   media_transfer_interrupted: 'The media transfer was interrupted before the file was stored.',
   media_transfer_timeout: 'The media transfer timed out before the file was stored.',

@@ -71,3 +71,18 @@ it('never shows a migration that set files aside as moved, lists those files and
   await act(async () => retry.click());
   expect(request.mock.calls.some(([url, init]) => url === '/api/orgs/publishing/media-migration' && init?.method === 'POST')).toBe(true);
 });
+
+it('does not promise automatic retries for set-aside files while other transfers run', async () => {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  const data = { github: { status: 'disconnected' }, github_choices: [], github_setup: { available: false },
+    cloudflare: { status: 'connected', revision: 'one', media_ready: true,
+      cloudflare: { account_id: 'a'.repeat(32), account_name: 'Test account', bucket: 'private', public_bucket: 'public' } },
+    media_migration: { state: 'running', phase: 'copying', copied_files: 100, pending_files: 1, failed_files: 2,
+      error: '2 files could not be copied and were skipped.', failed_media: [] } };
+  vi.stubGlobal('fetch', vi.fn(async () => Response.json(data)));
+  const container = document.createElement('div'); document.body.append(container); root = createRoot(container);
+  await act(async () => root.render(createElement(PublishingConnections)));
+  expect(container.textContent).toContain('Some files were set aside and are not retried automatically');
+  expect(container.textContent).toContain('other transfers continue automatically');
+  expect(container.textContent).not.toContain('Retrying the transfer automatically.');
+});

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Media } from '@typeroll/shared';
+import { mediaReadiness } from '../lib/media/readiness';
 import MediaDetail from './MediaDetail';
 import { filterMedia, mediaKind, MediaKindFilter, MediaThumb, mediaThumbStyles, type MediaFilter } from './MediaThumb';
 import { publicMediaUrl } from '../lib/media/presentation';
@@ -261,8 +262,9 @@ export default function MediaLibrary({ siteId, initialItems, selectable, onSelec
               <button
                 type="button"
                 className="media__item-preview"
-                onClick={() => (selectable && onSelect ? onSelect(m) : setActiveId(m.id))}
-                title={selectable ? 'Select' : 'Open details'}
+                disabled={selectable && !mediaReadiness(m).selectable}
+                onClick={() => (selectable && onSelect ? mediaReadiness(m).selectable && onSelect(m) : setActiveId(m.id))}
+                title={selectable ? mediaReadiness(m).message ?? 'Select' : 'Open details'}
               >
                 <MediaThumb item={m} size={200} />
                 <span style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap' }}>{`${m.filename} (${mediaKind(m)})`}</span>
@@ -273,7 +275,7 @@ export default function MediaLibrary({ siteId, initialItems, selectable, onSelec
                 <div className="row" style={{ gap: 4, marginTop: 4 }}>
                   <button className="btn btn--ghost btn--sm" onClick={() => publicMediaUrl(m) ? copy(publicMediaUrl(m)!) : setActiveId(m.id)} title={publicMediaUrl(m) ? "Copy public URL" : "View file details"} aria-label={publicMediaUrl(m) ? `Copy public URL for ${m.filename}` : `View details for ${m.filename}`}>📋</button>
                   {selectable ? (
-                    <button className="btn btn--sm" onClick={() => onSelect?.(m)}>Select</button>
+                    <button className="btn btn--sm" disabled={!mediaReadiness(m).selectable} title={mediaReadiness(m).message ?? undefined} onClick={() => { if (mediaReadiness(m).selectable) onSelect?.(m); }}>Select</button>
                   ) : (
                     <button className="btn btn--ghost btn--sm" onClick={() => setActiveId(m.id)} title="Open details">Edit</button>
                   )}

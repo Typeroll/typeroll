@@ -16,7 +16,7 @@ it('delegates URL imports to customer storage without downloading bytes in MCP',
   const result = await tool.handler({ items } as never, { client: { post } as unknown as TyperollClient, siteId: 'site' });
   const payload = JSON.parse(result.content[0]!.text);
   // A pending import has its record and is retried automatically: it is not a failure, but it is reported.
-  expect(payload).toMatchObject({ succeeded: 3, failed: 1, pending: 1 });
+  expect(payload).toMatchObject({ succeeded: 2, failed: 1, pending: 1 });
   expect(payload.results[3]).toMatchObject({ ok: true, pending: true, import: { state: 'pending' } });
   expect(payload.results[0]).toMatchObject({ ok: true, pending: false });
   expect(payload.results.map((entry: any) => entry.source_url)).toEqual(items.map(item => item.source_url));
