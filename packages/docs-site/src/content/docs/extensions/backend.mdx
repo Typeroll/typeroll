@@ -468,8 +468,8 @@ app's documented idempotency rules; inspect status before retrying an uncertain 
 
 An enabled installation with `email:send` can POST
 `/api/v1/sites/{siteId}/delivery/email` using its installation credential and
-organization/installation headers. This is transactional delivery, not permission
-to send unsolicited campaigns. The site administrator configures the provider,
+organization/installation headers. Delivery defaults to transactional mail.
+The `email:send` scope does not itself authorize an audience or campaign. The site administrator configures the provider,
 verified sender and Reply-To; apps never receive provider credentials or choose
 an arbitrary From address.
 
@@ -503,6 +503,88 @@ must not prune it while callers can reuse old keys.
 Amazon SES is an optional provider for Cloud and self-hosting. Its connector
 requires region, encrypted access keys and a configuration set. The sender must
 be verified in that SES region; sandbox accounts also restrict recipients.
+
+### Durable application email queues (runtime 0.47.0)
+
+This contract is prepared for runtime **0.47.0**. Check the actual host version
+and `/extensions/self` capabilities (`email_queue: 1`, `published_page: 1`)
+before enabling it. It uses Core's durable scheduler and sender. It does not
+require a customer-site function, browser loop or app-owned cron.
+
+The Site selects its own account or an explicitly owner-granted Organization
+account. Every dispatch resolves that selection and grant again. Site-wide
+campaign quotas and spacing are separate from transactional mail. See
+[Email tools](/docs/tools/email/) for account selection and owner permissions.
+Direct `POST /delivery/email` accepts `category: "bulk"` and a stable
+`delivery_group` identifier for campaign mail; omitted category preserves the
+transactional contract. Apps must classify their mail correctly. Direct bulk
+sends share the same Site allowance and category opt-out checks as queues.
+
+All queue routes use an enabled installation credential with `email:send`,
+Organization and installation headers. Queues and receipts are scoped to that
+installation and Site; ordinary Site API keys cannot operate another app's queue.
+
+| Request                       | Purpose                                                                              |
+| ----------------------------- | ------------------------------------------------------------------------------------ |
+| `GET /delivery/queues/policy` | Current Site budget, spacing, selected source, readiness and sender; no credentials. |
+| `POST /delivery/queues`       | Save reviewed messages as a draft. No sending or quota reservation.                  |
+| `GET /delivery/queues/{id}`   | Read safe progress and frozen previews.                                              |
+| `POST /delivery/queues/{id}`  | Explicit `start`, `pause`, `resume`, `cancel`, `cancel_entry` or `reconcile`.        |
+
+Queue creation takes a stable 16–100 character `id`, `group`, optional
+`daily_limit`, `interval_minutes` and 1–1,000 `entries`. Each entry has a unique
+identifier `id`, one `to`, a complete `subject` and plain `text`. Limits are
+clamped within the Site policy; an approved lower allowance stays in force.
+The complete reviewed entries must fit within 800 KB; split a larger campaign.
+The response is `{queue: {id, fingerprint, status, entries, ...}}`. Retrying the
+same creation ID with changed content is refused. Starting requires `action`
+and the reviewed `fingerprint`. `cancel_entry` additionally takes `entry_id`.
+`reconcile` only reads existing receipts; it never resends an uncertain message.
+
+Apps may leave only `{{link}}`, `{{expires}}` and `{{unsubscribe_url}}`
+placeholders in a reviewed entry. Private links require
+`preparation: {path: "/app/prepare-email", reference: "opaque-reference"}`.
+The path must be a POST route declared by the installed release and its origin
+must be approved. At the due dispatch time Core sends a short-lived,
+body-bound installation assertion with `token_use: "email_queue"` and
+`email:send` scope. Verify its issuer, audience, tenant, installation, version,
+contract, purpose and `body_sha256` before reading or changing private grants.
+
+The callback body is `{action:"prepare",queue_id,entry_id,reference,message_id}`.
+It returns `{values:{link,expires}}`, `{exclude:"reason"}` or a bounded positive
+`retry_after` in seconds. Generate a private grant idempotently for that exact
+message only when this callback runs. Repeated preparation must reuse the same
+protected values. Core owns the category unsubscribe link. Its GET displays a
+confirmation; POST opts out of this installation's group only. User-requested
+transactional mail is unaffected. Global bounce/complaint suppression still
+applies to every category.
+
+Core protects the final payload at rest, fences concurrent work and rechecks
+authorization and quota before dispatch. A resumed prepared entry is revalidated
+against the app; a changed link is excluded, never substituted silently.
+Pausing or cancelling stops waiting entries; an in-flight send may finish.
+Unavailable account authorization pauses the queue for review. Resuming is
+explicit. There are no automatic reminders.
+
+Definitive receipts trigger the same declared callback with
+`action:"receipt"`, the identifiers, `status` and `accepted`. The app should
+read Core's own `/delivery/email/{message_id}` receipt before activating a
+grant. Failed callbacks remain retryable without repeating the send. An
+unknown/interrupted delivery retains its original identity and protected payload;
+Core never automatically sends it again. Read the existing receipt by ID or
+`GET /delivery/email?idempotency_key=...` with the same credential. Do not
+replace the key or private link to work around uncertainty.
+
+### Published facts for external messages
+
+`GET /pages/{pageId}/published` and MCP `read_published_page` return public
+structured fields, title, URL, revision and publication ID from the last
+verified frozen publication of the selected version. They exclude page bodies,
+private schema fields, working copies and pending proposals. No verified source
+returns 404; Core never substitutes the current draft. Read this source when
+freezing message facts, and recheck its revision before sending if changed facts
+must invalidate approval. A revision is a digest of the public projection and
+does not disclose changes to private fields.
 Configure SNS delivery, bounce, complaint, rejection and rendering-failure events
 to `/api/webhooks/email/ses`, and explicitly allow its exact topic ARN through
 `EMAIL_SES_SNS_TOPICS`. The endpoint verifies the SNS signature and regional AWS

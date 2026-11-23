@@ -22,7 +22,8 @@
 // datastore reads.
 
 import { paths } from '@typeroll/shared';
-import type { Form, Partial as PartialDoc, Site, SiteIntegrations } from '@typeroll/shared';
+import type { Form, Partial as PartialDoc, Site } from '@typeroll/shared';
+import { readSiteEmailConfiguration } from './email/configuration';
 import { getStore } from './datastore';
 import { vstore } from './version-store';
 import { mediaTransferAvailability } from './wp/media';
@@ -134,14 +135,14 @@ export async function runMigrationPreflight(
   // forms yet isn't misconfigured — it just hasn't got there.
   const forms = await getStore().listDocs<Form>(paths.forms(orgId, siteId));
   if (forms.length > 0) {
-    const integrations = await getStore().getDoc<SiteIntegrations>(paths.integrations(orgId, siteId));
-    checks.push(integrations?.email
+    const { connector } = await readSiteEmailConfiguration(orgId, siteId);
+    checks.push(connector
       ? {
           id: 'forms_email',
           label: 'Form notification email',
           status: 'ok',
           severity: 'warning',
-          detail: `${forms.length} form(s); notifications send via ${integrations.email.type}.`,
+          detail: `${forms.length} form(s); notifications send via ${connector.type}.`,
         }
       : {
           id: 'forms_email',

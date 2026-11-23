@@ -83,6 +83,9 @@ export async function executeScheduledWork(id: string, generation?: string, now 
         }, [{ path: sitePath, data: { scheduled_publish_pending_at: now.toISOString(), scheduled_publish_revision: randomUUID() } }]);
         if (changed) { if (publish) result.pages_published++; else result.pages_unpublished++; }
       }
+    } else if (current.kind === 'application_email_queue') {
+      const { runScheduledApplicationEmailQueue } = await import('../email/queue-runtime');
+      await runScheduledApplicationEmailQueue(current.source, current.payload);
     } else if (current.kind === 'form_partial_abandoned') {
       // Written by the submit endpoint (lib/forms/abandoned.ts), not by the
       // datastore index: submissions are not scheduled sources.

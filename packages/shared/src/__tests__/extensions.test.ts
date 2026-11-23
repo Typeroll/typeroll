@@ -481,7 +481,7 @@ describe('extension renderer capabilities', () => {
       supports_extension_page_handoff: true,
       supports_extension_contracts: true,
       extension_protocol_version: 3,
-      extension_runtime_version: '0.46.0',
+      extension_runtime_version: '0.47.0',
       supports_extension_installation_config_api: true,
       supports_indexing_diagnostics: true,
       supports_migration_launch_report: true,

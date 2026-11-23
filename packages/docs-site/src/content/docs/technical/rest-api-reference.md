@@ -114,6 +114,55 @@ List operational metadata (status, versions, health; never config) for your Exte
 
 ## Organization
 
+### `get_organization_email_settings`
+
+`GET /api/v1/organization/email`
+
+Permission: `read`
+
+Read the selected Organization’s shared email account with secrets masked, its exact revision and the owned Sites allowed to use it. Only a current Organization owner, through a personal connection or an owner-issued organization API key, can manage this account. Site keys are refused.
+
+### `set_organization_email_settings`
+
+`PUT /api/v1/organization/email`
+
+Permission: `admin`
+
+Configure the Organization’s shared email account or its explicit Site grants. Read get_organization_email_settings first and pass its expected_revision. Prefer entering secrets in the portal; never repeat a secret. Omitted fields preserve the account or grants; a new account allows no Sites by default. Sites must still select the organization account themselves and retain their own campaign budgets. Owner authority is required.
+
+| Parameter | In | Type | Required | Description |
+| --- | --- | --- | --- | --- |
+| `expected_revision` | body | string | yes |  |
+| `type` | body | string | no |  |
+| `from` | body | string | no |  |
+| `reply_to` | body | string | no |  |
+| `config` | body | object | no |  |
+| `allowed_site_ids` | body | string[] | no |  |
+
+### `remove_organization_email_settings`
+
+`DELETE /api/v1/organization/email`
+
+Permission: `admin`
+
+Disconnect the Organization’s shared mail account and withdraw all Site grants. Sites using it stop sending through that account; they do not silently fall back to another account. Requires the current expected_revision, Organization owner authority and the user’s approval for this disconnection.
+
+| Parameter | In | Type | Required | Description |
+| --- | --- | --- | --- | --- |
+| `expected_revision` | body | string | yes |  |
+
+### `send_organization_test_email`
+
+`POST /api/v1/organization/email`
+
+Permission: `admin`
+
+Send one test through the stored Organization mail account, only when the user requested this test and recipient. Requires Organization owner authority. It does not start a campaign or grant Site access.
+
+| Parameter | In | Type | Required | Description |
+| --- | --- | --- | --- | --- |
+| `to` | body | string | yes |  |
+
 ### `list_organization_analytics`
 
 `GET /api/v1/organization/analytics`
@@ -1846,7 +1895,7 @@ Turn off Turnstile for the site's forms and delete the stored secret. Submission
 
 Permission: `read`
 
-Read the site's outgoing email connector (the provider form notifications send through): type, from, reply_to and config with secrets masked as { set: true }, plus every available provider with its field schema and whether the server can store secrets (crypto_configured). email is null when nothing is connected. Admin permission required.
+Read the site's selected outgoing account, campaign sending limits, available organization account and provider fields. Secrets are masked; shared organization credentials are never returned. Campaign limits are per site across its apps and exclude transactional mail. Admin permission required.
 
 ### `set_email_settings`
 
@@ -1858,8 +1907,10 @@ Connect or change the site's outgoing email provider, like Settings → Email &a
 
 | Parameter | In | Type | Required | Description |
 | --- | --- | --- | --- | --- |
-| `type` | body | string | yes | Provider type from get_email_settings providers, e.g. "postmark" or "smtp". |
-| `from` | body | string | yes | Sender, e.g. "Acme &lt;hello@acme.com&gt;". Must be a sender the provider accepts. |
+| `type` | body | string | no | Provider type when configuring this site’s own account. |
+| `from` | body | string | no | Sender when configuring this site’s own account. |
+| `source` | body | "site" \| "organization" \| "none" | no | Organization requires a current grant from its owner. Selecting it references the shared account without copying credentials. |
+| `bulk_email` | body | object | no | Site campaign allowance and pacing. UTC day; 0 disables campaigns. Transactional mail does not consume this allowance. |
 | `reply_to` | body | string | no | Optional default Reply-To address. |
 | `config` | body | object | no | Provider fields keyed by the field schema. |
 
@@ -2807,6 +2858,19 @@ List pages on the active site. Returns id, title, slug, status, SEO summary and 
 Permission: `read`
 
 Fetch one page in full — title, slug, status, html_content, SEO fields. Returns the DRAFT VIEW: the saved page with any unsaved draft (working copy) overlaid, plus has_unsaved_changes.
+
+| Parameter | In | Type | Required | Description |
+| --- | --- | --- | --- | --- |
+| `page_id` | path | string | yes |  |
+| `version` | query | string | no | Branch id to target. Omit for main. An id that does not name a version of this Site is refused with 404 — it is never answered about main instead. |
+
+### `read_published_page`
+
+`GET /api/v1/sites/{siteId}/pages/{page_id}/published`
+
+Permission: `read`
+
+Read the page from the last verified publication of this version: public title, fields, address, source revision and publication ID. Never includes a working copy, private fields or pending proposals. Returns 404 when no verified public source exists. Use this for facts intended for external messages, rather than read_page.
 
 | Parameter | In | Type | Required | Description |
 | --- | --- | --- | --- | --- |

@@ -1802,7 +1802,19 @@ export interface EmailConnector {
 
 export interface SiteIntegrations {
   email?: EmailConnector;
+  /** Omitted on earlier sites: use their own connector. Never fall back after a grant is revoked. */
+  email_source?: 'site' | 'organization' | 'none';
+  /** Campaign allowance, independent of transactional messages. UTC day. */
+  bulk_email?: { daily_limit: number; minimum_interval_minutes: number };
   updated_at?: string;
+}
+
+export interface OrganizationEmailSettings {
+  email?: EmailConnector;
+  /** Explicit grants by the organization owner; new sites receive no implicit access. */
+  allowed_site_ids: string[];
+  updated_at: string;
+  updated_by: string;
 }
 
 // ─── Typeroll apps (optional, per-site opt-in features) ────────────────────

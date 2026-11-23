@@ -1,0 +1,14 @@
+---
+import AppLayout from '../../../layouts/AppLayout.astro';
+import EmailSettings from '../../../components/EmailSettings';
+import { organizationEmailOwner } from '../../../lib/email/organization-email-api';
+
+const guard = await organizationEmailOwner(Astro.cookies);
+if (!guard.ok) return guard.response;
+Astro.response.headers.set('Cache-Control', 'no-store');
+---
+<AppLayout title="Organization email">
+  <div class="app-header"><h1>Organization email</h1></div>
+  <p>Connect an email account and choose which sites may use it. Each site chooses whether to use this account and keeps its own campaign sending limit. No sites have access until you select them.</p>
+  <EmailSettings client:load organization={true} />
+</AppLayout>

@@ -29,7 +29,7 @@ export class ContractCallError extends Error {
 export async function callContractApp(
   installation: ExtensionInstallation,
   release: ExtensionVersion,
-  purpose: 'component_variants' | 'default_markup',
+  purpose: 'component_variants' | 'default_markup' | 'email_queue',
   path: string,
   body: Record<string, unknown>,
   limits = { requestBytes: 262144, responseBytes: 262144 },
@@ -39,7 +39,7 @@ export async function callContractApp(
   const request = { page_id: purpose, method: 'POST' as const, path, body };
   const url = adminDestination(base, request);
   const token = signInstallationAssertion({
-    installation, scopes: [], correlationId: randomUUID(), purpose, version: release.version,
+    installation, scopes: purpose === 'email_queue' ? ['email:send'] : [], correlationId: randomUUID(), purpose, version: release.version,
     bodySha256: createHash('sha256').update(JSON.stringify(body)).digest('hex'),
   });
   const response = await requestApprovedAdmin(url, request, token, extensionIssuer(), limits);

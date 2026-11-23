@@ -1,10 +1,11 @@
 import { createHash } from 'node:crypto';
 import PostalMime, { addressParser } from 'postal-mime';
 import { Parser } from 'htmlparser2';
-import { paths, type ExtensionInstallation, type SiteIntegrations } from '@typeroll/shared';
+import { paths, type ExtensionInstallation } from '@typeroll/shared';
 import { getStore } from '../datastore';
 import { INBOUND_MAX_BYTES, inboundObject, loadInboundObject, deleteInboundObject } from './inbound-storage';
 import { DeliveryError, publicReceipt, readDelivery, sendApplicationEmail, type MailScope } from './delivery';
+import { resolveSiteEmailConnector } from './configuration';
 
 /** Approved by the host after DNS/target ownership verification, never supplied by an app. */
 export interface InboundRoute extends MailScope {
@@ -199,7 +200,7 @@ export async function receiveSesEmail(topic: string, payload: unknown,
     // postal-mime leaves `text` empty for an HTML-only message; the HTML is bounded by INBOUND_MAX_BYTES.
     const bodyText = parsed.text ?? (parsed.html ? htmlToPlainText(parsed.html) : undefined);
     if (!bodyText?.trim() || bodyText.length > 30_000) return finish('blocked', 'empty_or_oversized_text');
-    const connector = (await store.getDoc<SiteIntegrations>(paths.integrations(route.orgId, route.siteId)))?.email;
+    const connector = await resolveSiteEmailConnector(route.orgId, route.siteId);
     const from = connector?.from.match(/<([^<>]+)>\s*$/)?.[1] ?? connector?.from;
     if (connector?.type !== 'ses' || from?.toLowerCase() !== route.from) return finish('blocked', 'sender_configuration_changed');
     const text = `Forwarded message received at ${route.alias}\nOriginal sender: ${sender}\n${parsed.attachments.length ? 'Attachments were omitted for safety.\n' : ''}\n${bodyText}`;
