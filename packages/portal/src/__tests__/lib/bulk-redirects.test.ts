@@ -2,7 +2,7 @@ import { beforeEach, expect, it } from 'vitest';
 import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
 import { getStore } from '../../lib/datastore';
 import { bulkRedirectItems, prepareBulkRedirects, rollbackBulkRedirects, publicationBulkRedirects, saveBulkPlan, readBulkPlan, verifyBulkRedirects, releaseStagedBulkRedirects, type BulkRedirectContext } from '../../lib/publishing/bulk-redirects';
-import { pagesRedirectsFile } from '@typeroll/shared';
+import { pagesRedirectsFile, type PagesPathRedirect } from '@typeroll/shared';
 import { ProviderError, type ProviderClient } from '../../lib/publishing/providers.mjs';
 
 const ctx: BulkRedirectContext = { org: 'org', account: 'a'.repeat(32), site: 'one', version: 'main', host: 'www.example.test', publication: 'p1', job: 'organizations/org/sites/one/deploys/job1' };
@@ -10,7 +10,7 @@ const rules = [{ from_path: '/old/', to_path: '/new/?fixed=1#part', status_code:
 beforeEach(async () => { makeTmpFixtures(); await resetDatastore(); });
 
 function provider() {
-  const state = { lists: [] as any[], rules: [] as any[], items: {} as Record<string, any[]>, operations: {} as Record<string, any>, writes: [] as string[], next: 1, pending: false, reject: false, uncertain: false, pageSize: 1000 };
+  const state = { lists: [] as any[], rules: [] as any[], items: {} as Record<string, any[]>, operations: {} as Record<string, any>, writes: [] as string[], next: 1, pending: false, reject: false, uncertain: false, pageSize: 500, itemReads: [] as Array<{ start: number; perPage: number }> };
   const client: ProviderClient = async (route, options = {}) => {
     const root = `/accounts/${ctx.account}`;
     if (!route.startsWith(root)) throw Error('Wrong account');
@@ -30,9 +30,15 @@ function provider() {
         if (state.uncertain) { state.uncertain = false; throw Error('connection lost after successful write'); }
         return { operation_id: operation };
       }
-      const start = Number(new URL('https://api.test' + local).searchParams.get('cursor')) || 0;
-      const all = state.items[id] ?? [], page = all.slice(start, start + state.pageSize);
-      return { result: page, result_info: { cursors: { after: start + page.length < all.length ? String(start + page.length) : '' } } };
+      const query = new URL('https://api.test' + local).searchParams;
+      const start = Number(query.get('cursor')) || 0, perPage = Number(query.get('per_page'));
+      // The real endpoint rejects oversized pages with code 10027, even on an empty list.
+      expect(perPage).toBeGreaterThanOrEqual(1);
+      expect(perPage).toBeLessThanOrEqual(500);
+      state.itemReads.push({ start, perPage });
+      const all = state.items[id] ?? [], page = all.slice(start, start + Math.min(state.pageSize, perPage));
+      const presented = page.map(item => ({ ...item, redirect: { ...item.redirect, source_url: decodeURI(item.redirect.source_url), target_url: decodeURI(item.redirect.target_url) } }));
+      return { result: presented, result_info: { cursors: { after: start + page.length < all.length ? String(start + page.length) : '' } } };
     }
     if (local.endsWith('/entrypoint')) return state.rules.length ? { id: 'entry', rules: structuredClone(state.rules) } : null;
     if (local === '/rulesets' && method === 'POST') { state.rules.push(...body.rules.map((rule: any) => ({ ...rule, id: 'owned' }))); return {}; }
@@ -45,7 +51,7 @@ function provider() {
   };
   return { state, client };
 }
-async function finish(p: ReturnType<typeof provider>, context = ctx, redirects = rules, activate = true) {
+async function finish(p: ReturnType<typeof provider>, context = ctx, redirects: PagesPathRedirect[] = rules, activate = true) {
   for (let i = 0; i < 6; i++) if (await prepareBulkRedirects(context, redirects, p.client, activate)) return;
   throw Error('did not finish');
 }
@@ -171,4 +177,40 @@ it('refuses staged contents changed after preparation instead of activating them
   Object.values(p.state.items)[0]![0].redirect.target_url = 'https://unexpected.example.test/';
   await expect(prepareBulkRedirects(ctx, rules, p.client, true)).rejects.toMatchObject({ code: 'bulk_redirect_conflict' });
   expect(p.state.rules).toHaveLength(0);
+});
+
+it('reads and preserves overflow lists larger than the provider page limit', async () => {
+  const p = provider();
+  const many = Array.from({ length: 501 }, (_, index) => ({ from_path: `/old-${index}.html`, to_path: '/new/', status_code: 301 as const }));
+  await finish(p, ctx, many);
+  expect(p.state.itemReads.some(page => page.start === 500)).toBe(true);
+  expect(p.state.itemReads.every(page => page.perPage === 500)).toBe(true);
+  const active = p.state.rules[0].action_parameters.from_list.name;
+  const id = p.state.lists.find(list => list.name === active).id;
+  expect(p.state.items[id]).toHaveLength(501);
+});
+
+it('accepts provider Unicode presentation without changing encoded path delimiters', async () => {
+  const p = provider();
+  const redirects = [{ from_path: '/åäö/', to_path: '/ny-åäö/', status_code: 301 as const },
+    { from_path: '/encoded%2Fpath', to_path: '/other/', status_code: 302 as const }];
+  await finish(p, ctx, redirects);
+  const active = p.state.rules[0].action_parameters.from_list.name;
+  const id = p.state.lists.find(list => list.name === active).id;
+  expect(p.state.items[id].map(item => item.redirect.source_url)).toEqual([
+    'www.example.test/%C3%A5%C3%A4%C3%B6/', 'www.example.test/encoded%2Fpath',
+  ]);
+});
+
+it('normalizes unreserved source bytes while keeping spaces and reserved slashes encoded', async () => {
+  const p = provider();
+  const redirects = [{ from_path: '/ascii%41', to_path: '/new/', status_code: 301 as const },
+    { from_path: '/space%20path', to_path: '/new/', status_code: 301 as const },
+    { from_path: '/encoded%2fpath', to_path: '/new/', status_code: 301 as const }];
+  await finish(p, ctx, redirects);
+  const active = p.state.rules[0].action_parameters.from_list.name;
+  const id = p.state.lists.find(list => list.name === active).id;
+  expect(p.state.items[id].map(item => item.redirect.source_url)).toEqual([
+    'www.example.test/asciiA', 'www.example.test/space%20path', 'www.example.test/encoded%2Fpath',
+  ]);
 });
