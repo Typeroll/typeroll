@@ -112,7 +112,7 @@ img.mthumb.mthumb--graphic { object-fit:contain; padding:10%; box-sizing:border-
 .mthumb__type { font:600 11px/1 system-ui, sans-serif; letter-spacing:.04em; }
 .mfilter { display:flex; flex-wrap:wrap; gap:6px; }
 .mfilter__btn { display:inline-flex; align-items:center; gap:6px; padding:.3rem .65rem; border-radius:999px; border:1px solid var(--color-border, #d4d4d8); background:transparent; color:inherit; font-size:.8rem; cursor:pointer; }
-.mfilter__btn[aria-pressed="true"] { background:var(--color-primary, #4f46e5); border-color:var(--color-primary, #4f46e5); color:#fff; }
+.mfilter__btn[aria-pressed=true] { background:var(--color-primary, #4f46e5); border-color:var(--color-primary, #4f46e5); color:#fff; }
 .mfilter__btn:focus-visible { outline:2px solid #818cf8; outline-offset:2px; }
 .mfilter__count { opacity:.75; font-variant-numeric:tabular-nums; }
 `;

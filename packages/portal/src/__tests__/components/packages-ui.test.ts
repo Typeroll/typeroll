@@ -6,7 +6,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, createElement } from 'react';
-import { createRoot, type Root } from 'react-dom/client';
+import { createRoot, hydrateRoot, type Root } from 'react-dom/client';
 import { renderToString } from 'react-dom/server';
 import type { BlockTemplate, Media } from '@typeroll/shared';
 import PackageImport from '../../components/PackageImport';
@@ -267,6 +267,18 @@ describe('BlockTemplateList', () => {
 
 describe('MediaLibrary demo content', () => {
   const media = (id: string, demo?: boolean): Media => ({ id, filename: `${id}.jpg`, cdn_url: `https://media.example/${id}.jpg`, content_type: 'image/jpeg', created_at: '2026-11-01T10:00:00.000Z', demo } as Media);
+
+  it('hydrates the server-rendered library without replacing its content', async () => {
+    const element = createElement(MediaLibrary, { siteId: 'site-1', initialItems: [media('logo')] });
+    container = document.createElement('div');
+    container.innerHTML = renderToString(element);
+    document.body.append(container);
+    const preview = container.querySelector('.media__item-preview');
+    const recover = vi.fn();
+    await act(async () => { root = hydrateRoot(container, element, { onRecoverableError: recover }); });
+    expect(recover).not.toHaveBeenCalled();
+    expect(container.querySelector('.media__item-preview')).toBe(preview);
+  });
 
   it('marks demo files and asks for them to be replaced before publishing', () => {
     const html = renderToString(createElement(MediaLibrary, { siteId: 'site-1', initialItems: [media('hero', true), media('logo')] }));
