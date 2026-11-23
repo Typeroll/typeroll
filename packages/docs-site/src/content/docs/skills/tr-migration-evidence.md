@@ -388,11 +388,14 @@ From Core 0.3.49, new uploads default to the media root (`photo.jpg`), without
 automatic year/month folders. Explicit folders and WordPress upload-relative
 folders are preserved; `wp-content/uploads` and multisite prefixes are removed
 from new addresses. Different bytes receive permanent numeric names (`photo-2.jpg`);
-old safe public addresses stay available without a redirect per replacement.
+safe old aliases for included media stay available without a redirect per replacement.
 Managed WordPress imports declare their uploads namespace so publication can
 use one prefix with exact collision exceptions. A borrowed image alone does
 not declare a namespace. Check the returned public paths and the complete old
-URL inventory; Cloud requires the corresponding platform release.
+URL inventory; Cloud requires the corresponding platform release. A reserved name
+does not retain a deleted or unused file in every future build. Private object
+keys and responsive variants can still contain hashes; never construct URLs
+from those internal keys.
 
 Never split `_redirects` into multiple files.
 After publication, run `verify_migration_urls` against the agreed full inventory.

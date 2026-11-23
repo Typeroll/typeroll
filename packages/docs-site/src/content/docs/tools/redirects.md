@@ -231,15 +231,34 @@ unknown generated routes, or exceeds the dynamic budget uses known exact
 mappings instead. Stored rules remain unchanged. Cloud needs the corresponding
 platform release; self-hosted installations need to update Core.
 
-Safe old hash-based addresses are kept as static copies. Replacing an ordinary
-image reserves a new numbered filename and keeps the previous safe file; it
-does not automatically add a redirect for every replaced file or generated
-variant. The separate unsafe-media replacement rules still apply. A prefix
+Safe old hash-based addresses for included media are kept as static copies.
+Replacing an ordinary image reserves a new numbered filename instead of
+reusing an address for different bytes; it does not automatically add a
+redirect for every replaced file or generated variant. History that is deleted
+or no longer needed by saved content is omitted from later website output.
+A reserved name is not a guarantee that a file is still served: verify an
+explicit alias or mapping for every historical public URL that must remain. The separate unsafe-media replacement rules still apply. A prefix
 cannot discover every filename that ever existed: migration verification must
 still check the agreed old URL inventory and resolve missing files explicitly.
 
 The existing `/media/*` move to a separate media host already uses one prefix
 rule. See [website and media hosts](../../guides/customer-publishing/#website-and-media-hosts).
+
+### Why the Pages/Bulk hybrid remains
+
+Pages handles native exact paths and patterns without consuming account-wide
+Bulk entries. Bulk provides overflow for exact paths; it does not replace the
+Pages pattern budget or the separate query-source behavior. Sending every
+image address to Bulk would consume shared account capacity and staged-list
+headroom, and require the corresponding provider permissions even for a small
+site. Typeroll therefore uses native routing first and Bulk when exact output
+would exceed its budget. Both keep customer websites static.
+
+Readable media paths reduce the need for exact mappings: one established old
+uploads prefix can cover remaining folders and names, with explicit exceptions.
+HTML references should use the final media addresses directly. Old public URLs
+still need verified coverage; never delete a saved rule merely because current
+HTML no longer requests it. See the [limits and staged quota accounting](#redirect-limits).
 
 ## After a slug change
 

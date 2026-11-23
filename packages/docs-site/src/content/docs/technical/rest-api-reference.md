@@ -2042,7 +2042,7 @@ Read one media item's metadata by id. readiness reports state (ready, pending or
 
 Permission: `write`
 
-Mint a 5-min signed PUT URL for direct-to-R2 upload. The returned cdn_url is an authenticated editor reference, not a public sharing link. REQUIRED follow-up: call `finalize_media` after the PUT succeeds to verify and freeze the private original. Publish a PDF explicitly with `publish_media_file`; images become public with a website publication. The response carries `finalize_url` as a reminder. This signed-PUT path is the INTEGRITY-SAFE way to upload bytes from disk or a generated asset — a direct `curl --data-binary @file` sends the bytes straight to R2 without transcribing them through the model, so it can't be corrupted the way a large `upload_media_inline` base64 blob can (ESPECIALLY use this, not inline, for SVG/logos). For a public source URL, `upload_media_from_url` is the one-call equivalent; reserve `upload_media_inline` for tiny payloads only.
+Mint a temporary signed PUT URL for direct-to-R2 upload; use the returned expiry. The returned cdn_url is an authenticated editor reference, not a public sharing link. REQUIRED follow-up: call `finalize_media` after the PUT succeeds to verify and freeze the private original. Publish a PDF explicitly with `publish_media_file`; images become public with a website publication. The response carries `finalize_url` as a reminder. This signed-PUT path is the INTEGRITY-SAFE way to upload bytes from disk or a generated asset — a direct `curl --data-binary @file` sends the bytes straight to R2 without transcribing them through the model, so it can't be corrupted the way a large `upload_media_inline` base64 blob can (ESPECIALLY use this, not inline, for SVG/logos). For a public source URL, `upload_media_from_url` is the one-call equivalent; reserve `upload_media_inline` for tiny payloads only.
 
 | Parameter | In | Type | Required | Description |
 | --- | --- | --- | --- | --- |
@@ -2106,7 +2106,7 @@ Patch a media item's alt text, filename or public path. A rename must be correct
 | `media_id` | path | string | yes |  |
 | `alt_text` | body | string | no |  |
 | `filename` | body | string | no |  |
-| `public_path` | body | string \| null | no | Optional path such as /products/photo.jpg. New uploads default to the root filename without date folders. Publication numbers names used by different bytes; old safe public URLs stay available. |
+| `public_path` | body | string \| null | no | Optional path such as /products/photo.jpg. New uploads default to the root filename without date folders. Publication numbers names used by different bytes. Safe old aliases are retained for included media; reserved names do not republish deleted or unused files. Use null to choose the current filename again. |
 
 ### `generate_image_variants`
 
@@ -2114,7 +2114,7 @@ Patch a media item's alt text, filename or public path. A rename must be correct
 
 Permission: `write`
 
-Run the build-time srcset pipeline for one image: produces webp + avif variants at 320 / 640 / 1024 / 1920 (skipping upscales), uploads them to R2 alongside the original, and patches the media doc with a variants[] array. Synchronous; takes ~1-5s per image. Skips PDFs and non-image media without erroring. NOTE: prefer `finalize_media` for new uploads — it does this PLUS sets immutable Cache-Control on the original. Use this tool only for surgical variant reruns.
+Compatibility endpoint that reports pending build-time responsive image work. It does not transcode images synchronously or upload variants from the portal. The organization build engine generates smaller WebP/AVIF widths and the full original width without upscaling during preparation or publication. Finalize each new direct upload with finalize_media; use get_media_preparation to observe queued preparation. Non-processable files, including PDFs, return skipped: true. A variants_pending response is not proof that a file is ready or public.
 
 | Parameter | In | Type | Required | Description |
 | --- | --- | --- | --- | --- |
@@ -2139,7 +2139,7 @@ Finish an upload: verify its integrity, sanitize SVG when needed, and freeze the
 
 Permission: `write`
 
-Backfill version of finalize_media: walks the entire media library, applies cache headers + variant generation to every item missing them. Use this once on legacy sites to fix Lighthouse "cache lifetimes" + "image delivery" warnings in one go. Synchronous, can take minutes on large libraries (~1-5s per image needing variants, ~50ms for cache-only). Idempotent.
+Admin-only compatibility backfill. For customer publishing, returns variants_pending and instructs you to finalize each direct upload using its finalize_url; it does not finalize every private upload. Legacy runtime-storage sites apply missing cache metadata by walking the library synchronously. Neither path transcodes responsive image variants in the portal. Use finalize_media for new uploads and get_media_preparation for background build progress.
 
 ### `suggest_alt_text_context`
 

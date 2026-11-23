@@ -270,8 +270,15 @@ the full reference + concrete operation recipes.
   by the Organization's selected build provider. Ordinary authored uploads may
   use draft storage before connection; import tools must not bypass readiness
   that way. Legacy maintenance includes `finalize_all_media` and
-  `generate_image_variants`. `suggest_alt_text_context` returns a prompt for
-  the agent's vision model. See the [media API and tool guide](https://typeroll.com/docs/tools/media/).
+  `generate_image_variants`; neither transcodes images in the portal.
+  `readiness.selectable` distinguishes verified files from pending/failed import
+  records. Upload/finalize/preparation remain private; website publication makes
+  referenced media public, or `publish_media_file` publishes a PDF separately.
+  Core 0.3.49/MCP 0.45.150 default to readable root names without date folders,
+  preserve explicit and WordPress upload-relative folders, and number conflicts
+  permanently. A shared media host still uses a Site namespace. The matching
+  Core runtime is required; upgrading MCP alone changes no hosting behavior.
+  `suggest_alt_text_context` returns a prompt for the agent's vision model. See the [media API and tool guide](https://typeroll.com/docs/tools/media/).
 - **Rendering controls** — semantic `core/navigation`, mapped
   `core/post_card`, `core/table_of_contents`, per-site
   `trailing_slash`, exact `iframe_allowed_hosts`, `icon_192`, and per-page

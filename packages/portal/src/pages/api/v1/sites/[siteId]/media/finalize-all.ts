@@ -1,13 +1,7 @@
-// POST /api/v1/sites/{siteId}/media/finalize-all
-//
-// Backfill endpoint: walks every media item on the site, applies the
-// post-upload finalize (cache-headers + variant generation) to each. Use
-// this on legacy sites whose media was uploaded before the finalize
-// pipeline existed — autopilot.se is the canonical "fix this once" case.
-//
-// Synchronous and potentially slow (~1-5s per image when variants are
-// missing; ~50 ms per image when only cache headers need applying).
-// Caller may want to budget for the long tail on libraries >100 images.
+// Admin-only legacy finalization backfill. Customer publishing asks callers
+// to finalize each direct upload explicitly and reports pending build work.
+// The legacy runtime-storage path walks the library and applies cache metadata;
+// neither path transcodes responsive variants in the portal.
 
 import type { APIRoute } from 'astro';
 import { usesCustomerPublishing } from '@typeroll/shared';

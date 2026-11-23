@@ -32,6 +32,21 @@ the CMS. Do not delete source files or cancel old hosting as part of this routin
    separate old-host retirement decision. This archive does not preserve old
    public URLs by itself: keep URL parity/redirect acceptance separate.
 
+## Keep archive keys separate from public media paths
+
+An archive preserves full source identity. Core 0.3.49 public CMS names instead
+default new uploads to the Site's media root, preserve optional/WordPress
+upload-relative folders, and assign permanent numeric suffixes for conflicts.
+Those delivery names are not a substitute for this archive manifest. Never
+flatten source folders or infer the archive key from a new public filename.
+
+Verify copied bytes before creating content references. Private upload/editor
+URLs are not public or permanent archive links, and preparation is not
+publication. A prefix redirect cannot restore unavailable files or prove a
+complete source inventory. Keep old image/PDF URL verification separate from
+private archiving and the approval to retire hosting. See the public media
+and redirect guides for the installed Core version.
+
 ## Prepare print images for the web
 
 Use `scripts/typeroll/prepare_image.py` for a reviewed local TIFF or other original.
