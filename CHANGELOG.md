@@ -2,6 +2,10 @@
 
 ## 0.3.48 (candidate, MCP 0.45.149)
 
+- Omit equivalent per-file redirect lines already covered by existing patterns
+  in frozen publications, retaining authored rules, exceptions, status codes and
+  pattern precedence. Document public media URL continuity, the Pages/Bulk
+  hybrid, account quotas and staging capacity in the public guides and recipes.
 - Keep unfinished imports visible for repair while disabling selection and
   previews. Report media readiness in REST/MCP lists and individual reads;
   pending imports return no file URL and do not count as completed batch uploads.

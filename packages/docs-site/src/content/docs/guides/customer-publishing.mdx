@@ -500,6 +500,16 @@ redirects that end on such a path, for example `/wp-content/uploads/a.jpg` →
 `/media/a.jpg`, are published straight to the file on the media host, so an old
 address answers with one 301 instead of two. The saved rules are not changed.
 
+Do not create one redirect for every imported image by default. Preserve known
+public file addresses with safe aliases where possible, use one existing prefix
+mapping when paths and filenames stay unchanged, and keep individual rules for
+exceptions such as unrelated hashed filenames. Updating HTML alone does not
+preserve image search results or external embeds. From Core 0.3.48, the frozen
+publication omits per-file rules already covered by an existing rule with the
+same destination and status, while retaining the stored rules. See the
+[image and file redirect policy](/docs/tools/redirects/#image-and-file-addresses)
+for safety conditions and shared Bulk quotas.
+
 A media item's `public_path` can preserve a legacy path such as
 `/wp-content/uploads/2024/photo.jpg`. The path must end in an extension that
 matches the file's type. Public paths are immutable: a different file
@@ -863,8 +873,10 @@ For example, sanitizing an SVG
 changes its bytes and content-hashed filename. Typeroll generates a 301 from the
 old path to the sanitized file instead of retaining the unsanitized bytes or
 requiring a broken link. This redirect remains in later publications while that
-media record is still included. It counts toward the normal Pages redirect limits;
-dry runs validate those limits too.
+media record is still included. It counts toward the normal redirect budgets;
+exact overflow can use Bulk Redirects, and dry runs validate the actual frozen
+output too. An old and a new hashed filename usually need an individual mapping:
+a prefix rule cannot infer an unrelated hash.
 
 The build verifies the replacement's actual bytes through the old URL. A fresh
 publication header or a cache-busting query string does not prove the old URL is

@@ -18,13 +18,28 @@ PUT.
 
 ## Recipe
 
+### Public address continuity
+
+Do not create a redirect for every uploaded image or generated variant. Update
+all current HTML, `srcset`, CSS and share-image references to the verified new
+address. Preserve old public file URLs for external embeds, image search and
+shared links: keep safe aliases where possible, use an established prefix
+mapping when the complete remaining path is unchanged, and retain exact rules
+for exceptions such as unrelated content hashes. A `public_path` preserves a
+path, not a hostname. Never invent a wildcard from a partial import inventory.
+Private editor addresses and never-public variants need no automatic redirects.
+Do not delete configured redirects merely because current HTML no longer uses
+them. Core 0.3.48 compacts equivalent per-file rules in the frozen publication;
+stored rules stay intact. See https://typeroll.com/docs/tools/redirects/.
+
 ### 1. Get an image
 
 Options, in order of preference:
 
-a. **Reuse an existing one.** `list_media` returns CDN URLs for every
-   image already on this site. Search the list before generating
-   anything — saves bandwidth and keeps the visual catalog tight.
+a. **Reuse an existing one.** Search `list_media` before generating anything.
+   From Core 0.3.48 it also lists pending or failed imports for repair: select
+   only records whose `readiness.selectable` is true. A reserved CDN address
+   alone does not establish that a usable file exists.
 
 b. **Generate locally.** The user's Claude Code installation has
    access to whatever image-gen tools they've configured (DALL-E,

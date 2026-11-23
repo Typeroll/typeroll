@@ -101,6 +101,25 @@ beforeEach(async () => {
 });
 afterEach(() => { setSiteHostingRuntime(null); vi.unstubAllEnvs(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
+it('freezes compact media rules before the hosting build without changing configured rules', async () => {
+  hostedEnv(); await seedSite(); await queueJob('media-compact');
+  const rules = [
+    { id: 'image', from_path: '/media/photo.jpg', to_path: '/files/photo.jpg', status_code: 301 },
+    { id: 'prefix', from_path: '/media/*', to_path: '/files/:splat', status_code: 301 },
+    { id: 'changed', from_path: '/media/changed.jpg', to_path: '/files/hash-changed.jpg', status_code: 301 },
+  ];
+  // Under "never", the relative file targets agree with the prefix target.
+  await getStore().setDoc(paths.settings(ORG, SITE), { site_name: 'Bakery', trailing_slash: 'never' });
+  for (const { id, ...doc } of rules) await getStore().setDoc(`${paths.redirects(ORG, SITE)}/${id}`, doc);
+  await run('media-compact', { dryRun: true });
+  const job = await getStore().getDoc<any>(jobPath('media-compact'));
+  expect(job.status, job.error).toBe('succeeded');
+  expect(mocks.source.mock.calls[0][0].redirects).toHaveLength(2);
+  expect(mocks.source.mock.calls[0][0].redirects).toEqual(expect.arrayContaining(rules.slice(1)));
+  expect(mocks.source.mock.calls[0][0].media_redirect_omissions).toEqual([rules[0]]);
+  expect(await getStore().listDocs(paths.redirects(ORG, SITE))).toHaveLength(3);
+});
+
 describe('without a hosting service', () => {
   beforeEach(() => hostedEnv(false));
 

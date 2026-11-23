@@ -277,9 +277,9 @@ export async function publicationMediaManifest<T extends Record<string, any>>(or
 export function authoredMediaContent(publication: Record<string, any>): Record<string, any> {
   const { media: _media, media_manifest: _manifest, retained_media_manifests: _retained,
     source_impact_snapshot: _impact, reference_mapping: _mapping, media_replacement_redirects: _replacement,
-    media_host_redirects: _host, ...content } = publication;
+    media_host_redirects: _host, media_redirect_omissions: _omitted, ...content } = publication;
   const generated = new Set([...(_replacement ?? []), ...(_host ?? [])].map(rule => rule.id));
-  return { ...content, redirects: (content.redirects ?? []).filter((rule: any) => !generated.has(rule.id)) };
+  return { ...content, redirects: [...(content.redirects ?? []), ...(_omitted ?? [])].filter((rule: any) => !generated.has(rule.id)) };
 }
 
 /**

@@ -145,6 +145,15 @@ Always draft first. The user signs off before publishing.
 
 ### 5. Handle redirects
 
+For images and files, rewriting current HTML does not preserve old public URLs
+used by image search, external embeds or shared links. Keep safe aliases where
+possible, use an established prefix rule when the entire remaining path stays
+unchanged, and keep individual rules for exceptions such as unrelated hashes.
+Do not infer a wildcard from a partial inventory or create automatic redirects
+for private and never-public addresses. Existing configured rules stay intact;
+Core 0.3.48 compacts equivalent per-file lines only in frozen publication output.
+See https://typeroll.com/docs/tools/redirects/ for the policy and Bulk quotas.
+
 If the source URLs differ from the target slugs, create redirects:
 
 ```

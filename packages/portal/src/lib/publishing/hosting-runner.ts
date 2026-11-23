@@ -1,4 +1,5 @@
 import { freezeMediaPreparation } from '../../../../../scripts/fixtures/static-publication/media-preparation.mjs';
+import { freezeMediaRedirects } from './media-redirect-policy';
 // Publication job for hosted sites (`publishing_mode: hosted`).
 //
 // A sibling of customer-runner.ts, not a branch inside it: there is no Git
@@ -228,7 +229,11 @@ export async function executeHostedPublication(args: EnqueueArgs): Promise<Deplo
       const movedMedia = moveWebsiteMediaToMediaHost(retainDistinctMediaManifests(retained, frozen.media_manifest), frozen.media_manifest);
       frozen.retained_media_manifests = movedMedia.retained;
       frozen.media_host_redirects = movedMedia.redirects.filter(rule => !frozen.redirects?.some((existing: any) => existing.from_path === rule.from_path));
-      frozen.redirects = [...collapseMediaHostChains(frozen.redirects ?? [], frozen.media_host_redirects, host), ...frozen.media_host_redirects.map(({ media_path_prefix: _prefix, ...rule }: any) => rule)];
+      const mediaRedirects = freezeMediaRedirects([...collapseMediaHostChains(frozen.redirects ?? [], frozen.media_host_redirects, host),
+        ...frozen.media_host_redirects.map(({ media_path_prefix: _prefix, ...rule }: any) => rule)], frozen.settings?.trailing_slash, frozen);
+      frozen.redirects = mediaRedirects.redirects;
+      if (mediaRedirects.omitted.length) frozen.media_redirect_omissions = mediaRedirects.omitted;
+      else delete frozen.media_redirect_omissions;
       // Earlier addresses are redirected by the hosting service, not by the site.
       frozen.previous_website_hosts = [];
       const siteFonts = await freezeSiteFonts(frozen, prior?.theme_fonts, { orgId: args.orgId, siteId: args.siteId });
