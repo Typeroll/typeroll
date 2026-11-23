@@ -16,6 +16,23 @@ it('opens imported PDF links through private preview media without confusing for
 const TOKEN = 'tok.en/+=';
 const signed = (id: string) => `/preview/mysite/media/${id}?token=${encodeURIComponent(TOKEN)}`;
 
+it('opens absolute private PDF links with a fragment through the signed preview route', () => {
+  const url = 'https://portal.test/api/sites/mysite/media/pdf/content';
+  const media = [{ id: 'pdf', mime_type: 'application/pdf', cdn_url: url }] as Media[];
+  const html = rewritePreviewFileLinks(`<a href="${url}#page=2">Template</a>`, media);
+  expect(html).toContain('data-preview-file-link="1" target="_blank" rel="noopener noreferrer"');
+  expect(rewritePreviewMediaUrls(html, 'mysite', TOKEN)).toContain(`href="${signed('pdf')}#page=2"`);
+});
+
+it('matches the complete absolute PDF alias before its fragment without reusing foreign paths', () => {
+  const media = [{ id: 'pdf', mime_type: 'application/pdf', cdn_url: 'https://portal.test/api/sites/mysite/media/pdf/content',
+    source_aliases: ['https://live.test/media/template.pdf?edition=2', 'https://live.test/media/legacy.pdf#chapter'] }] as Media[];
+  const html = rewritePreviewFileLinks('<a href="https://live.test/media/template.pdf?edition=2#page=3">Template</a><a href="https://foreign.test/media/template.pdf?edition=2#page=3">Foreign</a><a href="https://live.test/media/legacy.pdf#chapter">Legacy</a>', media);
+  expect(html).toContain('href="https://portal.test/api/sites/mysite/media/pdf/content#page=3"');
+  expect(html).toContain('href="https://portal.test/api/sites/mysite/media/pdf/content#chapter"');
+  expect(html).toContain('href="https://foreign.test/media/template.pdf?edition=2#page=3"');
+});
+
 describe('rewritePreviewMediaUrls', () => {
   it('rewrites UUID media ids', () => {
     const id = '0f8fad5b-d9cb-469f-a165-70867728950e';

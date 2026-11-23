@@ -1,15 +1,19 @@
 import { test, expect } from '@playwright/test';
-import { DEFAULT_MAIN, e2eStore, PORTAL_ORIGIN } from './helpers/store';
+import { DEFAULT_MAIN, DEFAULT_SITE, e2eStore, PORTAL_ORIGIN } from './helpers/store';
 import { gotoReady } from './helpers/ready';
 
 test('isolated origin keeps the actual editor and shared preview working without portal authority', async ({ page }) => {
   test.skip(process.env.TYPEROLL_E2E_ISOLATED_PREVIEW !== 'true', 'Run with TYPEROLL_E2E_ISOLATED_PREVIEW=true');
   const id = 'isolated-preview', doc = `${DEFAULT_MAIN}/pages/${id}`;
+  const mediaDoc = `${DEFAULT_SITE}/media/isolated-preview-pdf`;
+  const pdfUrl = `${PORTAL_ORIGIN}/api/sites/default/media/isolated-preview-pdf/content`;
+  await e2eStore.set(mediaDoc, { mime_type: 'application/pdf', cdn_url: pdfUrl, filename: 'preview.pdf' });
   let asset: string | undefined;
   page.on('response', response => { const url = new URL(response.url()); if (!asset && url.origin === PORTAL_ORIGIN && url.pathname.startsWith('/_astro/')) asset = url.pathname; });
   await page.route('https://www.youtube.com/embed/isolated-preview-test', route => route.fulfill({ contentType: 'text/html', headers: { 'Content-Security-Policy': 'frame-ancestors *' }, body: '<label>Name <input></label><button>Continue</button>' }));
   await e2eStore.set(doc, { title: 'Isolated preview', slug: id, path: `/${id}/`, content_mode: 'blocks', status: 'draft', blocks: [
     { id: 'heading', type: 'core/heading', data: { text: 'Original heading', level: 'h2' } },
+    { id: 'file', type: 'core/prose', data: { html: `<p><a href="${pdfUrl}#page=2">Preview PDF</a></p>` } },
     { id: 'partner', type: 'core/embed', data: { html: '<iframe title="Partner form" src="https://www.youtube.com/embed/isolated-preview-test" style="width:100%;height:140px"></iframe>' } },
   ] });
   try {
@@ -22,6 +26,10 @@ test('isolated origin keeps the actual editor and shared preview working without
     await expect(preview.getByText('External content in preview · www.youtube.com')).toBeVisible();
     await expect(preview.locator('[data-preview-embed-help] details')).toHaveAttribute('open', '');
     await expect(preview.getByText(/Typeroll cannot confirm/)).toBeVisible();
+    const file = preview.getByRole('link', { name: 'Preview PDF', exact: true });
+    await expect(file).toHaveAttribute('data-preview-file-link', '1');
+    await expect(file).toHaveAttribute('target', '_blank');
+    await expect(file).toHaveAttribute('href', /\/preview\/default\/media\/isolated-preview-pdf\?token=[^#]+#page=2$/);
     const frame = await iframe.elementHandle().then(handle => handle!.contentFrame());
     const origin = new URL(frame!.url()).origin;
     expect(origin).not.toBe(PORTAL_ORIGIN);
@@ -48,5 +56,5 @@ test('isolated origin keeps the actual editor and shared preview working without
     await page.goto(link.url + '&consent=necessary');
     await expect(page.frameLocator('#preview').getByRole('heading', { name: 'Original heading' })).toBeVisible();
     await page.screenshot({ path: '/tmp/typeroll-isolated-portal-preview.png', fullPage: true });
-  } finally { await page.goto('about:blank'); await page.request.delete(`/api/sites/default/working-copy/page/${id}`, { headers: { Origin: PORTAL_ORIGIN } }); await e2eStore.deleteTree(doc); }
+  } finally { await page.goto('about:blank'); await page.request.delete(`/api/sites/default/working-copy/page/${id}`, { headers: { Origin: PORTAL_ORIGIN } }); await e2eStore.deleteTree(doc); await e2eStore.deleteTree(mediaDoc); }
 });
