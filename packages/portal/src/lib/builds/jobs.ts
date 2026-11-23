@@ -13,7 +13,7 @@ import { inspectArtifact } from './artifact-stream';
 import { OrganizationBuildQueue, buildTasksPath, buildAttemptLimit, buildDeadline, queuedBuildExpired, expireQueuedBuild, type BuildTask } from './queue';
 import { readEngineConfiguration, buildInputPath, type BuildInput, type EngineConfiguration } from './state';
 import { buildStorage } from './storage';
-import { recordProviderStatus } from './queue-state';
+import { describeBuildQueue, readQueueEntries, recordProviderStatus } from './queue-state';
 
 export async function enqueueBuild(config: EngineConfiguration, identity: Omit<BuildIdentity, 'source_sha256' | 'protocol' | 'node_version'>, files: Record<string, string>, kind: BuildInput['kind'] = 'publication', options: { requeueFailed?: boolean; directUpload?: boolean } = {}) {
   if (kind === 'publication' && !files['packages/site-template/src/lib/publication-validation.mjs'])
@@ -90,13 +90,19 @@ export async function dispatchPendingBuild(org: string, key: string, config: Eng
     // A runner can claim another queued job in the same organization. A stopped dispatch
     // is not proof this task ran; only its attempt lease establishes ownership.
   }
+  // Only the next eligible step needs a shared runner. Starting runners for
+  // later steps while the account is busy can make Cloudflare stop those
+  // starts and exhaust their retry limit before they have had a turn.
+  const now = Date.now();
+  const waiting = describeBuildQueue({ id: key, task, input },
+    (await readQueueEntries(org)).filter(entry => !queuedBuildExpired(entry.task, now)), now);
+  if (waiting && (waiting.ahead > 0 || waiting.running_kinds.length > 0)) return;
   // Shared runners take the organization's next step, which need not be the step
   // they were started for. A dispatch whose runner claimed another step was used,
   // not lost, so only a dispatch after which no step was claimed counts toward the
   // start limit: a busy queue never fails a step that is simply waiting its turn.
   const served = !!input.dispatch_id && await runnerServedAnotherStep(org, key, input.dispatch_started_at ?? 0);
   const attempts = (input.dispatch_attempt ?? 0) + (served ? 0 : 1);
-  const now = Date.now();
   // A verification dispatch that the provider definitively stopped is safe to
   // retry. Capacity/start failures must not turn already-served output into a
   // failed publication after just three starts. The queue deadline still bounds
