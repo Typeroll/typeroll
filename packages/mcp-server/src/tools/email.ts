@@ -10,7 +10,7 @@ export const emailTools: ToolDef[] = [
   {
     name: 'get_email_settings',
     description:
-      "Read the site's outgoing email connector (the provider form notifications send through): type, from, reply_to and config with secrets masked as { set: true }, plus every available provider with its field schema and whether the server can store secrets (crypto_configured). email is null when nothing is connected. Admin permission required.",
+      "Read the site's selected outgoing account, campaign sending limits, available organization account and provider fields. Secrets are masked; shared organization credentials are never returned. Campaign limits are per site across its apps and exclude transactional mail. Admin permission required.",
     handler: withErrorBoundary(async (_args, { client, siteId }) => ok(await client.get(siteId, 'integrations/email'))),
   },
   {
@@ -18,17 +18,43 @@ export const emailTools: ToolDef[] = [
     description:
       "Connect or change the site's outgoing email provider, like Settings → Email & notifications in the portal. Read get_email_settings first for the provider field schema. Examples: postmark config { server_token, message_stream? }; smtp config { host, port?, secure?, user?, password? }. Secrets are encrypted server-side and never returned; omit a secret (or send the masked value) to keep the stored one. Then call send_test_email. Admin permission required.",
     inputSchema: {
-      type: z.string().min(1).describe('Provider type from get_email_settings providers, e.g. "postmark" or "smtp".'),
-      from: z.string().min(1).describe('Sender, e.g. "Acme <hello@acme.com>". Must be a sender the provider accepts.'),
+      type: z.string().min(1).optional().describe('Provider type when configuring this site’s own account.'),
+      from: z.string().min(1).optional().describe('Sender when configuring this site’s own account.'),
+      source: z.enum(['site', 'organization', 'none']).optional().describe('Organization requires a current grant from its owner. Selecting it references the shared account without copying credentials.'),
+      bulk_email: z.object({ daily_limit: z.number().int().min(0).max(10000).optional(), minimum_interval_minutes: z.number().int().min(1).max(1440).optional() }).optional().describe('Site campaign allowance and pacing. UTC day; 0 disables campaigns. Transactional mail does not consume this allowance.'),
       reply_to: z.string().optional().describe('Optional default Reply-To address.'),
       config: z.record(z.string(), z.unknown()).optional().describe('Provider fields keyed by the field schema.'),
     },
     handler: withErrorBoundary(async (args, { client, siteId }) => ok(await client.put(siteId, 'integrations/email', {
-      type: args.type,
-      from: args.from,
+      ...(args.type !== undefined ? { type: args.type, config: args.config ?? {} } : {}),
+      ...(args.from !== undefined ? { from: args.from } : {}),
+      ...(args.source !== undefined ? { source: args.source } : {}),
+      ...(args.bulk_email !== undefined ? { bulk_email: args.bulk_email } : {}),
       ...(args.reply_to !== undefined ? { reply_to: args.reply_to } : {}),
-      config: args.config ?? {},
     }))),
+  },
+  {
+    name: 'get_organization_email_settings', noSite: true,
+    description: 'Read the selected Organization’s shared email account with secrets masked, its exact revision and the owned Sites allowed to use it. Only a current Organization owner, through a personal connection or an owner-issued organization API key, can manage this account. Site keys are refused.',
+    inputSchema: {}, handler: withErrorBoundary(async (_args, { client }) => ok(await client.rootGet('organization/email'))),
+  },
+  {
+    name: 'set_organization_email_settings', noSite: true,
+    description: 'Configure the Organization’s shared email account or its explicit Site grants. Read get_organization_email_settings first and pass its expected_revision. Prefer entering secrets in the portal; never repeat a secret. Omitted fields preserve the account or grants; a new account allows no Sites by default. Sites must still select the organization account themselves and retain their own campaign budgets. Owner authority is required.',
+    inputSchema: { expected_revision: z.string().regex(/^[a-f0-9]{64}$/), type: z.string().optional(), from: z.string().optional(), reply_to: z.string().optional(), config: z.record(z.string(), z.unknown()).optional(), allowed_site_ids: z.array(z.string()).max(1000).optional() },
+    handler: withErrorBoundary(async (args, { client }) => ok(await client.rootPut('organization/email', args))),
+  },
+  {
+    name: 'remove_organization_email_settings', noSite: true,
+    description: 'Disconnect the Organization’s shared mail account and withdraw all Site grants. Sites using it stop sending through that account; they do not silently fall back to another account. Requires the current expected_revision, Organization owner authority and the user’s approval for this disconnection.',
+    inputSchema: { expected_revision: z.string().regex(/^[a-f0-9]{64}$/) },
+    handler: withErrorBoundary(async (args, { client }) => ok(await client.rootDelete('organization/email', args))),
+  },
+  {
+    name: 'send_organization_test_email', noSite: true,
+    description: 'Send one test through the stored Organization mail account, only when the user requested this test and recipient. Requires Organization owner authority. It does not start a campaign or grant Site access.',
+    inputSchema: { to: z.string().min(3) },
+    handler: withErrorBoundary(async (args, { client }) => ok(await client.rootPost('organization/email', args))),
   },
   {
     name: 'delete_email_settings',

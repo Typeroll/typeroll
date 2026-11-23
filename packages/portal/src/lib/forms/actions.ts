@@ -1,4 +1,5 @@
 import { readOrganizationAccess } from '../organization-access';
+import { resolveSiteEmailConnector } from '../email/configuration';
 // Form actions — what happens after a form is submitted.
 //
 // `Form.actions` is a list of `{ type, config }`, and this is the registry
@@ -17,7 +18,7 @@ import { readOrganizationAccess } from '../organization-access';
 // for a new action type or a new app.
 
 import { formMessage, paths } from '@typeroll/shared';
-import type { EmailActionConfig, EmailConnector, Form, FormAction, SiteIntegrations } from '@typeroll/shared';
+import type { EmailActionConfig, Form, FormAction } from '@typeroll/shared';
 import type { AppConfigField } from '../apps/types';
 import { getStore } from '../datastore';
 import { buildEmailMessage, emailFieldsFromForm } from '../email/render-email';
@@ -141,10 +142,7 @@ const CORE_ACTIONS: FormActionDef[] = [
       { key: 'include_all', label: 'Append all submitted values', type: 'boolean', default: true },
     ],
     run: async (action, ctx) => {
-      const integrations = await getStore().getDoc<SiteIntegrations>(
-        paths.integrations(ctx.orgId, ctx.siteId),
-      );
-      const connector: EmailConnector | undefined = integrations?.email;
+      const connector = await resolveSiteEmailConnector(ctx.orgId, ctx.siteId);
       const access = await readOrganizationAccess(ctx.orgId);
       if (!connector || (access.own_smtp && connector.type !== 'smtp')) {
         console.warn(`[form action] email skipped — own SMTP not configured for site ${ctx.siteId}`);

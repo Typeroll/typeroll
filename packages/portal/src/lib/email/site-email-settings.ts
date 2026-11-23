@@ -17,6 +17,7 @@ import { buildConnector, maskConnector } from './connector-config';
 import { DeliveryError } from './delivery';
 import { setInboundRoute, siteInboundRoutes } from './inbound';
 import { resolveSmtpHost, SmtpConfigError } from './providers/smtp';
+import { bulkEmailPolicy, readSiteEmailConfiguration, resolveSiteEmailConnector } from './configuration';
 
 /** A refusal with the HTTP status every surface reports it with. */
 export class EmailSettingsError extends Error {
@@ -25,17 +26,24 @@ export class EmailSettingsError extends Error {
 
 /** The connector (secrets masked), the available providers and whether secrets can be saved. */
 export async function readEmailSettings(orgId: string, siteId: string) {
-  const doc = await getStore().getDoc<SiteIntegrations>(paths.integrations(orgId, siteId));
+  const configuration = await readSiteEmailConfiguration(orgId, siteId);
+  const doc = configuration.document;
   const access = await readOrganizationAccess(orgId);
   return {
     own_smtp_required: access.own_smtp,
-    email: maskConnector(doc?.email),
+    email: configuration.source === 'organization' && configuration.connector ? { type: configuration.connector.type, from: configuration.connector.from, reply_to: configuration.connector.reply_to ?? '', config: {} } : maskConnector(configuration.connector ?? undefined),
+    source: configuration.source,
+    site_email: maskConnector(doc?.email),
+    organization_email: { available: configuration.organization_available, from: configuration.organization_from },
+    bulk_email: configuration.policy,
     providers: providerDescriptors().filter(provider => !access.own_smtp || provider.type === 'smtp'),
     crypto_configured: isSecretCryptoConfigured(),
   };
 }
 
 export interface EmailSettingsInput {
+  source?: unknown;
+  bulk_email?: unknown;
   type?: unknown;
   from?: unknown;
   reply_to?: unknown;
@@ -44,18 +52,32 @@ export interface EmailSettingsInput {
 
 /** Validate and store the connector; returns it masked. */
 export async function saveEmailSettings(orgId: string, siteId: string, body: EmailSettingsInput | null) {
-  if (!isSecretCryptoConfigured()) {
-    throw new EmailSettingsError('Email secrets cannot be saved: INTEGRATIONS_SECRET_KEY is not configured on the server.', 503);
-  }
   if (!body || typeof body !== 'object' || Array.isArray(body)) throw new EmailSettingsError('Invalid JSON body', 400);
+  if (body.type === undefined && [body.from, body.reply_to, body.config].some(value => value !== undefined)) throw new EmailSettingsError('Supply the provider type when changing account details', 400);
+  const store = getStore(), path = paths.integrations(orgId, siteId), existing = await store.getDoc<SiteIntegrations>(path);
+  let policy = existing?.bulk_email;
+  if (body.bulk_email !== undefined) {
+    const input = body.bulk_email as Record<string, unknown> | null;
+    if (!input || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).some(key => !['daily_limit', 'minimum_interval_minutes'].includes(key)) ||
+        input.daily_limit !== undefined && (!Number.isSafeInteger(input.daily_limit) || Number(input.daily_limit) < 0 || Number(input.daily_limit) > 10000) ||
+        input.minimum_interval_minutes !== undefined && (!Number.isSafeInteger(input.minimum_interval_minutes) || Number(input.minimum_interval_minutes) < 1 || Number(input.minimum_interval_minutes) > 1440)) throw new EmailSettingsError('Use a daily campaign limit from 0 to 10000 and a sending interval from 1 to 1440 minutes', 400);
+    policy = { ...bulkEmailPolicy(existing?.bulk_email), ...input } as NonNullable<SiteIntegrations['bulk_email']>;
+  }
+  const source = body.source ?? (body.type === undefined ? existing?.email_source ?? 'site' : 'site');
+  if (!['site', 'organization', 'none'].includes(String(source))) throw new EmailSettingsError('Choose a site account or an authorized organization account', 400);
+  if (body.source === 'organization' && !(await readSiteEmailConfiguration(orgId, siteId)).organization_available) throw new EmailSettingsError('The organization owner has not allowed this site to use the shared email account', 403);
+  if (body.type === undefined) {
+    if (body.bulk_email === undefined && body.source === undefined) throw new EmailSettingsError('Supply an email source or campaign sending policy', 400);
+    if (!await store.compareAndReplaceDoc(path, existing, { ...(existing ?? {}), email_source: source, ...(policy ? { bulk_email: policy } : {}), updated_at: new Date().toISOString() })) throw new EmailSettingsError('Email settings changed. Reload before saving.', 409);
+    return readEmailSettings(orgId, siteId);
+  }
+  if (source !== 'site') throw new EmailSettingsError('Shared account credentials can only be changed in Organization email settings', 400);
+  if (!isSecretCryptoConfigured()) throw new EmailSettingsError('Email secrets cannot be saved: INTEGRATIONS_SECRET_KEY is not configured on the server.', 503);
   if ((await readOrganizationAccess(orgId)).own_smtp && body.type !== 'smtp') throw new EmailSettingsError('During the trial, use your own SMTP account. Form submissions and webhooks work without email.', 400);
   const config = body.config ?? {};
   if (typeof config !== 'object' || Array.isArray(config) || config === null) {
     throw new EmailSettingsError('config must be an object of provider fields', 400);
   }
-  const store = getStore();
-  const path = paths.integrations(orgId, siteId);
-  const existing = await store.getDoc<SiteIntegrations>(path);
   let connector;
   try {
     connector = buildConnector(
@@ -75,12 +97,14 @@ export async function saveEmailSettings(orgId: string, siteId: string, body: Ema
       throw new EmailSettingsError(error instanceof SmtpConfigError ? error.message : 'SMTP host is not allowed', 400);
     }
   }
-  await store.setDoc(path, {
+  if (!await store.compareAndReplaceDoc(path, existing, {
     ...(existing ?? {}),
     email: connector,
+    email_source: 'site',
+    ...(policy ? { bulk_email: policy } : {}),
     updated_at: new Date().toISOString(),
-  } satisfies SiteIntegrations);
-  return { email: maskConnector(connector) };
+  } satisfies SiteIntegrations)) throw new EmailSettingsError('Email settings changed. Reload before saving.', 409);
+  return readEmailSettings(orgId, siteId);
 }
 
 /** Disconnect the connector. Form email actions are skipped until one is configured again. */
@@ -88,9 +112,13 @@ export async function removeEmailSettings(orgId: string, siteId: string) {
   const store = getStore();
   const path = paths.integrations(orgId, siteId);
   const existing = await store.getDoc<SiteIntegrations>(path);
-  if (!existing?.email) return { removed: false, email: null };
+  if (!existing?.email && existing?.email_source !== 'organization') return { removed: false, email: null };
+  if (existing.email_source === 'organization') {
+    if (!await store.compareAndReplaceDoc(path, existing, { ...existing, email_source: 'none', updated_at: new Date().toISOString() })) throw new EmailSettingsError('Email settings changed. Reload before disconnecting.', 409);
+    return { removed: true, email: null };
+  }
   const { email: _removed, ...rest } = existing;
-  await store.setDoc(path, { ...rest, updated_at: new Date().toISOString() } satisfies SiteIntegrations);
+  if (!await store.compareAndReplaceDoc(path, existing, { ...rest, email_source: 'none', updated_at: new Date().toISOString() } satisfies SiteIntegrations)) throw new EmailSettingsError('Email settings changed. Reload before disconnecting.', 409);
   return { removed: true, email: null };
 }
 
@@ -98,12 +126,12 @@ export async function removeEmailSettings(orgId: string, siteId: string) {
 export async function sendTestEmail(orgId: string, site: { id: string; name: string }, input: unknown) {
   const to = String((input as { to?: unknown } | null)?.to ?? '').trim();
   if (!to) throw new EmailSettingsError('A recipient "to" is required for the test', 400);
-  const doc = await getStore().getDoc<SiteIntegrations>(paths.integrations(orgId, site.id));
-  if (!doc?.email) throw new EmailSettingsError('No email connector configured yet', 400);
-  if ((await readOrganizationAccess(orgId)).own_smtp && doc.email.type !== 'smtp') throw new EmailSettingsError('Configure your own SMTP account during the trial.', 400);
+  const connector = await resolveSiteEmailConnector(orgId, site.id);
+  if (!connector) throw new EmailSettingsError('No authorized email connector configured yet', 400);
+  if ((await readOrganizationAccess(orgId)).own_smtp && connector.type !== 'smtp') throw new EmailSettingsError('Configure your own SMTP account during the trial.', 400);
   try {
-    const res = await sendViaConnector(doc.email, {
-      from: doc.email.from,
+    const res = await sendViaConnector(connector, {
+      from: connector.from,
       to,
       subject: `Test email from ${site.name}`,
       html: `<p>This is a test email from your Typeroll site <strong>${escapeHtml(site.name)}</strong>.</p><p>If you received it, your email connector is working.</p>`,

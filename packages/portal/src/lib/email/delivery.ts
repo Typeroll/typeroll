@@ -1,20 +1,23 @@
 import { createHash } from 'node:crypto';
 import { readOrganizationAccess } from '../organization-access';
-import { paths, type EmailConnector, type SiteIntegrations } from '@typeroll/shared';
+import { paths, type EmailConnector } from '@typeroll/shared';
 import { getStore } from '../datastore';
 import { sendViaConnector } from './index';
 import type { EmailMessage, SendResult } from './types';
 import { EMAIL_BODY_FORMATS, linkedTextToHtml, linkedTextToPlain, type EmailBodyFormat } from './linked-text';
+import { queueOptoutPath, queueRecipientDigest } from './optouts';
+import { readSiteEmailConfiguration } from './configuration';
 
 export type DeliveryStatus = 'dispatching' | 'accepted' | 'delivered' | 'failed' | 'unknown' | 'bounced' | 'complained';
 export interface MailScope { orgId: string; siteId: string; installationId: string }
 export interface DeliveryReceipt extends MailScope {
+  category?: 'transactional' | 'bulk';
   id: string; fingerprint: string; recipient_digest: string; provider: string;
   provider_id?: string; status: DeliveryStatus; attempts: number; created_at: string;
   updated_at: string; events: Array<{ id: string; type: string; at: string }>;
 }
 export class DeliveryError extends Error {
-  constructor(message: string, readonly status: number) { super(message); }
+  constructor(message: string, readonly status: number, readonly retry_after?: number) { super(message); }
 }
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
 const base = (scope: MailScope) => paths.site(scope.orgId, scope.siteId);
@@ -24,6 +27,7 @@ const pause = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, m
 
 export function publicReceipt(receipt: DeliveryReceipt) {
   return { message_id: receipt.id, status: receipt.status,
+    category: receipt.category ?? 'transactional',
     accepted: ['accepted', 'delivered', 'bounced', 'complained'].includes(receipt.status),
     delivered: receipt.status === 'delivered', attempts: receipt.attempts,
     created_at: receipt.created_at, updated_at: receipt.updated_at, events: receipt.events };
@@ -38,7 +42,7 @@ export async function readDelivery(scope: MailScope, id: string): Promise<Delive
 /** One durable reservation, one sender. Uncertain sends are never reclaimed by a timer. */
 export async function sendApplicationEmail(scope: MailScope,
   input: { idempotency_key: string; to: string; subject: string; text: string; format?: EmailBodyFormat; calendar?: EmailMessage['calendar'] },
-  dependencies: { send?: (connector: EmailConnector, message: EmailMessage) => Promise<SendResult>; sleep?: typeof pause; forwarding?: { replyTo: string } } = {},
+  dependencies: { send?: (connector: EmailConnector, message: EmailMessage) => Promise<SendResult>; sleep?: typeof pause; forwarding?: { replyTo: string }; deliveryGroup?: string; category?: 'transactional' | 'bulk' } = {},
 ): Promise<DeliveryReceipt> {
   if (typeof input.idempotency_key !== 'string' || !/^[A-Za-z0-9_-]{16,100}$/.test(input.idempotency_key)) throw new DeliveryError('idempotency_key must contain 16–100 letters, digits, underscores or hyphens', 400);
   if(input.calendar && (typeof input.calendar!=='object'||typeof input.calendar.content!=='string'||Buffer.byteLength(input.calendar.content)>64*1024||
@@ -49,15 +53,16 @@ export async function sendApplicationEmail(scope: MailScope,
   // Structural callers can contain routing metadata. Persist only the scope IDs.
   scope = { orgId: scope.orgId, siteId: scope.siteId, installationId: scope.installationId };
   const store = getStore();
-  const integrations = await store.getDoc<SiteIntegrations>(paths.integrations(scope.orgId, scope.siteId));
-  if (!integrations?.email) throw new DeliveryError('Site email delivery is not configured', 409);
-  const connector = integrations.email;
+  const configuration = await readSiteEmailConfiguration(scope.orgId, scope.siteId);
+  if (!configuration.connector) throw new DeliveryError('Site email delivery is not configured', 409);
+  const connector = configuration.connector, bulk = dependencies.category === 'bulk';
   const id = hash(JSON.stringify([scope.orgId, scope.siteId, scope.installationId, input.idempotency_key]));
   const path = receiptPath(scope, id);
-  const fingerprint = hash(JSON.stringify([input.to.trim().toLowerCase(), input.subject, input.text, ...(input.calendar ? [input.calendar] : []), ...(dependencies.forwarding ? [dependencies.forwarding] : []), ...(linked ? ['format:linked_text'] : [])]));
+  const fingerprint = hash(JSON.stringify([input.to.trim().toLowerCase(), input.subject, input.text, ...(input.calendar ? [input.calendar] : []), ...(dependencies.forwarding ? [dependencies.forwarding] : []), ...(linked ? ['format:linked_text'] : []), ...(bulk ? ['category:bulk', dependencies.deliveryGroup ?? null] : [])]));
   const recipient = hash(`${scope.orgId}\0${scope.siteId}\0${input.to.trim().toLowerCase()}`);
+  const groupOptout = dependencies.deliveryGroup ? queueOptoutPath(scope, queueRecipientDigest(scope, dependencies.deliveryGroup, input.to)) : null;
   const now = new Date().toISOString();
-  const receipt: DeliveryReceipt = { ...scope, id, fingerprint, recipient_digest: recipient, provider: connector.type,
+  const receipt: DeliveryReceipt = { ...scope, id, fingerprint, category: bulk ? 'bulk' : 'transactional', recipient_digest: recipient, provider: connector.type,
     status: 'dispatching', attempts: 0, created_at: now, updated_at: now, events: [] };
   let reserved = false;
   for (let attempt = 0; attempt < 8; attempt++) {
@@ -73,12 +78,16 @@ export async function sendApplicationEmail(scope: MailScope,
     }
     const suppression = await store.getDoc(suppressionPath(scope, recipient));
     if (suppression) throw new DeliveryError('This destination is suppressed after a bounce or complaint', 409);
-    const quotaPath = `${base(scope)}/mail_quotas/${now.slice(0, 10)}`;
+    if (groupOptout && await store.getDoc(groupOptout)) throw new DeliveryError('This destination opted out of this email category', 409);
+    const quotaPath = `${base(scope)}/${bulk ? 'mail_bulk_quotas' : 'mail_quotas'}/${now.slice(0, 10)}`;
     const quota = await store.getDoc<{ total: number; installations: Record<string, number> }>(quotaPath);
     const installationKey = hash(scope.installationId);
     const total = quota?.total ?? 0;
     const count = quota?.installations?.[installationKey] ?? 0;
-    if (total >= 500 || count >= 100) throw new DeliveryError('Daily transactional mail limit reached', 429);
+    if (bulk ? total >= configuration.policy.daily_limit : total >= 500 || count >= 100) throw new DeliveryError(bulk ? 'Daily campaign mail limit reached' : 'Daily transactional mail limit reached', 429);
+    const pacingPath = `${base(scope)}/mail_bulk_pacing/default`;
+    const pacing = bulk ? await store.getDoc<{ next_at: number }>(pacingPath) : null;
+    if (pacing && pacing.next_at > Date.now()) throw new DeliveryError('Campaign email interval has not elapsed', 429, Math.ceil((pacing.next_at - Date.now()) / 1000));
     // The event route lives in the global object and cannot share the site's
     // conditional commit. Its content is derived from the id, so writing it
     // first is safe to repeat; a route without a receipt matches no event.
@@ -86,6 +95,11 @@ export async function sendApplicationEmail(scope: MailScope,
     reserved = await store.compareAndReplaceDoc(path, null, receipt, [
       { path: quotaPath, expected: quota, replace: true, data: { total: total + 1, installations: { ...quota?.installations, [installationKey]: count + 1 } } },
       { path: suppressionPath(scope, recipient), expected: null, data: {}, guardOnly: true },
+      ...(groupOptout ? [{ path: groupOptout, expected: null, data: {}, guardOnly: true }] : []),
+      ...(bulk ? [
+        { path: pacingPath, expected: pacing, replace: true, data: { next_at: Date.now() + configuration.policy.minimum_interval_minutes * 60000 } },
+        { path: paths.integrations(scope.orgId, scope.siteId), expected: configuration.document, data: {}, guardOnly: true },
+      ] : []),
     ]);
     if (reserved) break;
   }

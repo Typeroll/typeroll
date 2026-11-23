@@ -53,7 +53,17 @@ function valuesFromConnector(p: ProviderDescriptor, c: MaskedConnector): Values 
   return v;
 }
 
-export default function EmailSettings({ siteId }: { siteId: string }) {
+export default function EmailSettings({ siteId, organization = false }: { siteId?: string; organization?: boolean }) {
+  const endpoint = organization ? '/api/orgs/email' : `/api/sites/${siteId}/integrations/email`;
+  const [source, setSource] = useState<'site' | 'organization'>('site');
+  const [organizationAvailable, setOrganizationAvailable] = useState(false);
+  const [organizationFrom, setOrganizationFrom] = useState<string | null>(null);
+  const [connected, setConnected] = useState(false);
+  const [dailyLimit, setDailyLimit] = useState(10);
+  const [intervalMinutes, setIntervalMinutes] = useState(15);
+  const [revision, setRevision] = useState('');
+  const [sites, setSites] = useState<Array<{ id: string; name: string }>>([]);
+  const [allowedSites, setAllowedSites] = useState<string[]>([]);
   const [ownSmtpRequired, setOwnSmtpRequired] = useState(false);
   const [providers, setProviders] = useState<ProviderDescriptor[]>([]);
   const [type, setType] = useState<string>('');
@@ -74,14 +84,21 @@ export default function EmailSettings({ siteId }: { siteId: string }) {
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch(`/api/sites/${siteId}/integrations/email`);
+        const res = await fetch(endpoint);
         const data = await res.json();
         if (!res.ok) throw new Error(data.error ?? `Load failed (${res.status})`);
         const provs: ProviderDescriptor[] = data.providers ?? [];
         setProviders(provs);
         setCryptoOk(Boolean(data.crypto_configured));
         setOwnSmtpRequired(data.own_smtp_required === true);
-        const email: MaskedConnector | null = data.email;
+        setSource(data.source === 'organization' ? 'organization' : 'site');
+        setOrganizationAvailable(data.organization_email?.available === true);
+        setOrganizationFrom(data.organization_email?.from ?? null);
+        setConnected(Boolean(data.email));
+        setDailyLimit(data.bulk_email?.daily_limit ?? 10);
+        setIntervalMinutes(data.bulk_email?.minimum_interval_minutes ?? 15);
+        setRevision(data.revision ?? ''); setSites(data.sites ?? []); setAllowedSites(data.allowed_site_ids ?? []);
+        const email: MaskedConnector | null = organization ? data.email : 'site_email' in data ? data.site_email : data.email;
         const initial = email && provs.find((p) => p.type === email.type);
         if (email && initial) {
           setType(email.type);
@@ -98,7 +115,7 @@ export default function EmailSettings({ siteId }: { siteId: string }) {
         setLoading(false);
       }
     })();
-  }, [siteId]);
+  }, [endpoint, organization]);
 
   function changeProvider(newType: string) {
     setType(newType);
@@ -116,16 +133,21 @@ export default function EmailSettings({ siteId }: { siteId: string }) {
     setError(null);
     setMsg(null);
     try {
-      const res = await fetch(`/api/sites/${siteId}/integrations/email`, {
+      const res = await fetch(endpoint, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type, from, reply_to: replyTo, config: values }),
+        body: JSON.stringify(organization ? { type, from, reply_to: replyTo, config: values, allowed_site_ids: allowedSites, expected_revision: revision }
+          : source === 'organization' ? { source, bulk_email: { daily_limit: dailyLimit, minimum_interval_minutes: intervalMinutes } }
+          : { source, type, from, reply_to: replyTo, config: values, bulk_email: { daily_limit: dailyLimit, minimum_interval_minutes: intervalMinutes } }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? `Save failed (${res.status})`);
       setMsg('Saved.');
+      setConnected(Boolean(data.email));
+      if (data.revision) setRevision(data.revision);
       // Reflect now-stored secrets back as masked.
-      if (provider && data.email) setValues(valuesFromConnector(provider, data.email));
+      const saved = organization ? data.email : 'site_email' in data ? data.site_email : source === 'site' ? data.email : null;
+      if (provider && saved) setValues(valuesFromConnector(provider, saved));
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Save failed');
     } finally {
@@ -133,12 +155,39 @@ export default function EmailSettings({ siteId }: { siteId: string }) {
     }
   }
 
+  async function savePolicyOrAccess() {
+    setSaving(true); setError(null); setMsg(null);
+    try {
+      const res = await fetch(endpoint, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(organization
+        ? { allowed_site_ids: allowedSites, expected_revision: revision }
+        : { bulk_email: { daily_limit: dailyLimit, minimum_interval_minutes: intervalMinutes } }) });
+      const data = await res.json(); if (!res.ok) throw new Error(data.error ?? 'Save failed');
+      if (data.revision) setRevision(data.revision);
+      setMsg(organization ? 'Site access saved. Sites still choose whether to use this account.' : 'Campaign sending limits saved. Transactional emails use a separate allowance.');
+    } catch (error) { setError(error instanceof Error ? error.message : 'Save failed'); }
+    finally { setSaving(false); }
+  }
+
+  async function disconnect() {
+    setSaving(true); setError(null); setMsg(null);
+    try {
+      const res = await fetch(endpoint, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, ...(organization ? { body: JSON.stringify({ expected_revision: revision }) } : {}) });
+      const data = await res.json(); if (!res.ok) throw new Error(data.error ?? 'Disconnect failed');
+      if (data.revision) setRevision(data.revision);
+      if (organization) setAllowedSites([]);
+      setConnected(false);
+      if (organization || source === 'site') { setFrom(''); setReplyTo(''); setValues(provider ? defaultsFor(provider) : {}); }
+      setMsg(organization ? 'Organization account disconnected. Sites can no longer use it.' : 'Outgoing email disconnected for this site.');
+    } catch (error) { setError(error instanceof Error ? error.message : 'Disconnect failed'); }
+    finally { setSaving(false); }
+  }
+
   async function sendTest() {
     setTesting(true);
     setError(null);
     setMsg(null);
     try {
-      const res = await fetch(`/api/sites/${siteId}/integrations/email`, {
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ to: testTo }),
@@ -163,10 +212,18 @@ export default function EmailSettings({ siteId }: { siteId: string }) {
           <p className="text-sm">Server-side encryption key (<code>INTEGRATIONS_SECRET_KEY</code>) is not configured, so credentials can't be saved.</p>
         </div>
       )}
-      {error && <p style={{ color: 'var(--danger, #b91c1c)' }}>{error}</p>}
-      {msg && <p style={{ color: 'var(--success, #15803d)' }}>{msg}</p>}
+      {error && <p role="alert" style={{ color: 'var(--danger, #b91c1c)' }}>{error}</p>}
+      {msg && <p role="status" style={{ color: 'var(--success, #15803d)' }}>{msg}</p>}
+      <p>{connected ? 'An outgoing email account is connected.' : 'Outgoing email is disconnected.'}</p>
 
-      <div className="card stack">
+      {!organization && <div className="card stack">
+        <label className="field"><span>Outgoing email account</span><select value={source} onChange={event => setSource(event.target.value as 'site' | 'organization')}>
+          <option value="site">This site's own account</option><option value="organization" disabled={!organizationAvailable}>Organization account{organizationAvailable ? '' : ' — owner permission required'}</option>
+        </select></label>
+        {source === 'organization' && <p>{organizationAvailable ? `Shared sender: ${organizationFrom}. Credentials are managed by the organization owner.` : 'The organization owner has not allowed this site to use the shared account, or has withdrawn access. Choose a site account to configure another sender.'}</p>}
+      </div>}
+
+      {(organization || source === 'site') && <div className="card stack">
         <label className="field"><span>Provider</span>
           <select value={type} onChange={(e) => changeProvider(e.target.value)}>
             {providers.map((p) => <option key={p.type} value={p.type}>{p.label}</option>)}
@@ -182,16 +239,31 @@ export default function EmailSettings({ siteId }: { siteId: string }) {
         {provider?.fields.map((f) => <Field key={f.key} field={f} value={values[f.key]} onChange={(v) => setField(f.key, v)} />)}
 
         <div className="row"><button type="submit" className="btn btn-primary" disabled={saving || !cryptoOk}>{saving ? 'Saving…' : 'Save connector'}</button></div>
-      </div>
+      </div>}
+      {!organization && source === 'organization' && <button type="submit" className="btn btn-primary" disabled={saving || !organizationAvailable}>Use organization account</button>}
+
+      {organization ? <section className="card stack" aria-labelledby="email-site-access">
+        <h2 id="email-site-access">Sites allowed to use this account</h2>
+        <p>New sites are excluded until you choose them here. Withdrawing access stops new sends through this account; a message already in progress may finish.</p>
+        {sites.map(site => <label className="row" key={site.id}><input type="checkbox" checked={allowedSites.includes(site.id)} onChange={event => setAllowedSites(previous => event.target.checked ? [...new Set([...previous, site.id])] : previous.filter(id => id !== site.id))} />{site.name}</label>)}
+        <div><button type="button" className="btn" disabled={saving} onClick={savePolicyOrAccess}>Save site access</button></div>
+      </section> : <section className="card stack" aria-labelledby="campaign-sending-limits">
+        <h2 id="campaign-sending-limits">Campaign sending limits</h2>
+        <label className="field"><span>Campaign emails per day</span><input type="number" min={0} max={10000} step={1} value={dailyLimit} onChange={event => setDailyLimit(Number(event.target.value))} /></label>
+        <label className="field"><span>Minimum minutes between campaign emails</span><input type="number" min={1} max={1440} step={1} value={intervalMinutes} onChange={event => setIntervalMinutes(Number(event.target.value))} /></label>
+        <p>The daily allowance resets at midnight UTC and is shared by this site's apps. Transactional emails, including confirmations and edit links requested by a user, do not count toward it. A daily limit of 0 stops campaign sending.</p>
+        <div><button type="button" className="btn" disabled={saving} onClick={savePolicyOrAccess}>Save sending limits</button></div>
+      </section>}
 
       <div className="card stack">
         <h2 style={{ fontSize: '1rem' }}>Send a test email</h2>
         <div className="row email-test-row" style={{ gap: '0.5rem', alignItems: 'stretch' }}>
-          <input style={{ flex: 1 }} value={testTo} onChange={(e) => setTestTo(e.target.value)} placeholder="you@example.com" />
-          <button type="button" className="btn" onClick={sendTest} disabled={testing || !testTo.trim()}>{testing ? 'Sending…' : 'Send test'}</button>
+          <input style={{ flex: 1, minWidth: 0 }} value={testTo} onChange={(e) => setTestTo(e.target.value)} placeholder="you@example.com" />
+          <button type="button" className="btn" onClick={sendTest} disabled={testing || !testTo.trim() || !connected}>{testing ? 'Sending…' : 'Send test'}</button>
         </div>
         <p className="text-sm muted">Save the connector first. The test uses the stored credentials.</p>
       </div>
+      <div><button type="button" className="btn" disabled={saving} onClick={disconnect}>{organization ? 'Disconnect account for all allowed sites' : 'Disconnect outgoing email'}</button></div>
     </form>
   );
 }

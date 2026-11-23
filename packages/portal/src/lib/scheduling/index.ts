@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import type { ReadWriteStore } from '../datastore';
 
 export const WORK_COLLECTION = 'scheduled_work';
-export type WorkKind = 'page_schedule' | 'site_publish' | 'publication' | 'build_result' | 'build_continue' | 'form_partial_abandoned' | 'form_webhook_retry' | 'organization_access_notice' | 'domain_serving_check' | 'workflow_chunk' | 'deploy_dispatch' | 'media_chain';
+export type WorkKind = 'page_schedule' | 'site_publish' | 'publication' | 'build_result' | 'build_continue' | 'form_partial_abandoned' | 'form_webhook_retry' | 'organization_access_notice' | 'domain_serving_check' | 'workflow_chunk' | 'deploy_dispatch' | 'media_chain' | 'application_email_queue';
 export interface ScheduledWork {
   kind: WorkKind;
   source: string;
@@ -13,7 +13,7 @@ export interface ScheduledWork {
   lease_owner?: string | null;
   blocked_by?: string | null;
 }
-export const isScheduledSource = (p: string) => /^organizations\/[^/]+$/.test(p) || /^organizations\/[^/]+\/build_tasks\/[^/]+$/.test(p) || /^organizations\/[^/]+\/sites\/[^/]+(?:\/versions\/main\/pages\/[^/]+|\/deploys\/[^/]+)?$/.test(p);
+export const isScheduledSource = (p: string) => /^organizations\/[^/]+$/.test(p) || /^organizations\/[^/]+\/build_tasks\/[^/]+$/.test(p) || /^organizations\/[^/]+\/sites\/[^/]+(?:\/versions\/main\/pages\/[^/]+|\/deploys\/[^/]+|\/mail_queues\/[^/]+)?$/.test(p);
 export type IndexWrite = { path: string; data: ScheduledWork | null };
 export const workPath = (source: string, kind: WorkKind) => `${WORK_COLLECTION}/${createHash('sha256').update(`${kind}:${source}`).digest('hex')}`;
 const time = (value: unknown): number => typeof value === 'string' ? Date.parse(value) : typeof value === 'number' ? value : NaN;
@@ -38,7 +38,11 @@ export function scheduledIndexWrites(source: string, before: any, after: any, no
     });
   }
   let kind: WorkKind, due = NaN, payload: Record<string, any> = {};
-  if (/^organizations\/[^/]+\/build_tasks\/[^/]+$/.test(source)) {
+  if (/^organizations\/[^/]+\/sites\/[^/]+\/mail_queues\/[^/]+$/.test(source)) {
+    kind = 'application_email_queue';
+    if (after?.next_at !== null && Number.isFinite(after?.next_at)) due = after.next_at;
+    payload = { queue_id: source.split('/').at(-1), installation_id: after?.installationId ?? null, wake_revision: after?.wake_revision ?? null };
+  } else if (/^organizations\/[^/]+\/build_tasks\/[^/]+$/.test(source)) {
     kind = after?.status === 'queued' && after?.attempt > 0 ? 'build_continue' : 'build_result';
     // Running builds have no estimated restart time. Only a terminal result
     // creates the next link in the publication chain.

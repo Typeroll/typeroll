@@ -24,6 +24,7 @@ export const GET: APIRoute = async ({ request, params }) => {
   // publication activates (null when unknown). A versioned app Worker keeps serving the published one.
   // `contract` is the app contract the installation is bound to (null without one); it, not the version, selects the app's address.
   const response = apiResponse(ctx, { installation_id: installation.id, extension_id: installation.extension_id, version: version.version,
+    capabilities: { email_queue: 1, published_page: 1 },
     contract: installation.contract ?? null,
     published_version: await publishedExtensionVersion(ctx.orgId, ctx.siteId, installation.id, ctx.versionId), status: installation.status, config: { ...config.public_config, ...config.private_config },
     origins: [...await extensionSiteOrigins(ctx.orgId, ctx.siteId)], scopes: ctx.extensionIdentity.scopes });

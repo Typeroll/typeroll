@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.3.52 (candidate, MCP 0.45.151)
+
+- Add reusable durable application email queues with explicit review/start,
+  pause/resume/cancel, pacing, category opt-outs and receipt reconciliation.
+  Preserve protected message identity when dispatch is uncertain.
+- Configure campaign allowance and spacing per Site, separately from
+  transactional mail. Let Organization owners explicitly share a canonical
+  email account with selected Sites; revoke without automatic fallback.
+- Expose verified published public facts for external message preparation,
+  excluding working copies, private fields and pending proposals. Add owner
+  account-management MCP tools and Extension runtime 0.47.0 capabilities.
+
 ## 0.3.51 (candidate, MCP 0.45.150)
 
 - Wait for earlier queued or active organization work before requesting a

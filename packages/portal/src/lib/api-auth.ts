@@ -167,7 +167,9 @@ type ExtensionRouteRule = {
 };
 const EXTENSION_ROUTE_RULES: ExtensionRouteRule[] = [
   { path: /^\/delivery\/inbound(?:\/[a-f0-9]{64})?$/, scope: (_w, m) => (m === 'GET' ? 'email:inbound:status' : null) },
-  { path: /^\/delivery\/email$/, scope: (_w, m) => (m === 'POST' ? 'email:send' : null) },
+  { path: /^\/delivery\/email$/, scope: (_w, m) => (['GET', 'POST'].includes(m) ? 'email:send' : null) },
+  { path: /^\/delivery\/queues\/policy$/, scope: (_w, m) => m === 'GET' ? 'email:send' : null },
+  { path: /^\/delivery\/queues(?:\/[a-f0-9]{64})?$/, scope: (_w, m) => (['GET', 'POST'].includes(m) ? 'email:send' : null) },
   { path: /^\/delivery\/email\/[a-f0-9]{64}$/, scope: (_w, m) => (m === 'GET' ? 'email:send' : null) },
   { path: /^\/extensions\/self$/, scope: (w) => (w ? null : 'extension:config:read') },
   { path: /^\/apps\/documentation$/, scope: (w) => (w ? null : 'content:read') },
@@ -180,6 +182,7 @@ const EXTENSION_ROUTE_RULES: ExtensionRouteRule[] = [
   { path: /^\/media\/purge$/, scope: () => null },
   { path: /^\/media(?:\/.*)?$/, scope: (w) => (w ? 'media:write' : 'media:read') },
   { path: new RegExp(`^/pages/${ID}/owner-fields$`), scope: () => 'content:owner' },
+  { path: new RegExp(`^/pages/${ID}/published$`), scope: (_w, m) => m === 'GET' ? 'content:read' : null },
   { path: new RegExp(`^/containers/${ID}/${ID}/blocks(?:/.*)?$`), scope: (w) => (w ? 'content:write' : 'content:read') },
   // Site fields have their own scopes: their values steer what the site shows
   // (opening hours, a booking toggle) and their definitions are site admin.

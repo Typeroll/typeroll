@@ -1061,6 +1061,15 @@ describe('Extension identities', () => {
     const formsWrite = await requireApiKey(new Request(`https://portal.example/api/v1/sites/${SITE}/forms`, { method: 'POST', headers }), SITE);
     expect(formsWrite.ok).toBe(false);
     if (!formsWrite.ok) expect(formsWrite.response.status).toBe(403);
+    const queueUrl = `https://portal.example/api/v1/sites/${SITE}/delivery/queues`;
+    expect((await requireApiKey(new Request(queueUrl, { method: 'POST', headers }), SITE)).ok).toBe(false);
+    expect((await requireApiKey(new Request(`https://portal.example/api/v1/sites/${SITE}/pages/example/published`, { headers }), SITE)).ok).toBe(true);
+    await getStore().updateDoc(paths.extensionInstallation(OWNER_ORG, SITE, installation.id), { granted_scopes: ['email:send'] });
+    const emailCredential = await rotateInstallationCredential({ ownerOrgId: OWNER_ORG, siteId: SITE, installationId: installation.id, actorId: 'admin' });
+    headers.Authorization = `Bearer ${emailCredential.credential}`;
+    for (const [suffix, method] of [['', 'POST'], ['/policy', 'GET'], ['/' + 'a'.repeat(64), 'GET'], ['/' + 'a'.repeat(64), 'POST']])
+      expect((await requireApiKey(new Request(queueUrl + suffix, { method, headers }), SITE)).ok).toBe(true);
+    expect((await requireApiKey(new Request(queueUrl + '/unexpected/nested', { method: 'POST', headers }), SITE)).ok).toBe(false);
   });
 });
 

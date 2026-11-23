@@ -12,11 +12,28 @@ function client() {
     put: vi.fn().mockResolvedValue({ ok: true }),
     post: vi.fn().mockResolvedValue({ ok: true }),
     del: vi.fn().mockResolvedValue({ ok: true }),
+    rootGet: vi.fn().mockResolvedValue({ ok: true }),
+    rootPut: vi.fn().mockResolvedValue({ ok: true }),
+    rootPost: vi.fn().mockResolvedValue({ ok: true }),
+    rootDelete: vi.fn().mockResolvedValue({ ok: true }),
   };
 }
 const tool = (list: typeof emailTools, name: string) => list.find((t) => t.name === name)!;
 
 describe('email settings tools', () => {
+  it('selects a granted account and updates campaign limits without provider credentials', async () => {
+    const c = client(), deps = { client: c as never, siteId: 'site-a' };
+    await tool(emailTools, 'set_email_settings').handler({ source: 'organization', bulk_email: { daily_limit: 25 } }, deps);
+    expect(c.put).toHaveBeenCalledWith('site-a', 'integrations/email', { source: 'organization', bulk_email: { daily_limit: 25 } });
+  });
+  it('keeps owner operations at Organization scope and preserves the reviewed grant revision', async () => {
+    const c = client(), deps = { client: c as never, siteId: 'site-a' }, input = { expected_revision: 'a'.repeat(64), allowed_site_ids: ['site-a'] };
+    await tool(emailTools, 'get_organization_email_settings').handler({}, deps); expect(c.rootGet).toHaveBeenCalledWith('organization/email');
+    await tool(emailTools, 'set_organization_email_settings').handler(input, deps); expect(c.rootPut).toHaveBeenCalledWith('organization/email', input);
+    await tool(emailTools, 'remove_organization_email_settings').handler({ expected_revision: input.expected_revision }, deps);
+    expect(c.rootDelete).toHaveBeenCalledWith('organization/email', { expected_revision: input.expected_revision });
+    expect(c.put).not.toHaveBeenCalled();
+  });
   it('call the v1 email connector routes', async () => {
     const c = client();
     const deps = { client: c as never, siteId: 'site-a' };
@@ -73,6 +90,7 @@ describe('registration', () => {
         ['set_email_settings', 'admin'], ['delete_email_settings', 'admin'], ['send_test_email', 'admin'],
         ['set_incoming_email_forwarding', 'admin'], ['get_email_settings', 'read'], ['get_incoming_email_settings', 'read'],
         ['read_incoming_email_receipt', 'read'], ['get_form_capabilities', 'read'], ['read_form_submission', 'read'],
+        ['set_organization_email_settings', 'admin'], ['remove_organization_email_settings', 'admin'], ['send_organization_test_email', 'admin'], ['get_organization_email_settings', 'read'],
       ] as const) {
         const result = await mcp.callTool({ name: 'describe_tool', arguments: { name } }) as { content: Array<{ text: string }> };
         expect(JSON.parse(result.content[0]!.text)).toMatchObject({ name, effect });

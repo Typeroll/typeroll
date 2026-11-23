@@ -45,6 +45,12 @@ const canManagePublishing = membership?.role === 'owner' || membership?.role ===
       <p class="muted">Ask an organization owner or admin to set up the AI assistant.</p>}
   </section>
 
+  <section class="card stack" style="max-width: 720px; margin-top: 1rem;">
+    <h2>Organization email</h2>
+    <p>Optionally share an organization email account with selected sites. Each site keeps its own campaign allowance and can use its own account instead.</p>
+    {membership?.role === 'owner' ? <div><a class="btn" href="/app/settings/email">Open organization email settings</a></div> : <p class="muted">An organization owner manages the shared account and site access.</p>}
+  </section>
+
   <p class="muted text-sm" style="margin-top: 1rem;">
     Looking for API keys? They have their own page in the sidebar now — <a href="/app/settings/api-keys">Account → API keys</a>.
   </p>

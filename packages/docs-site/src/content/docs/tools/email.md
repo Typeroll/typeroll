@@ -1,6 +1,6 @@
 ---
 title: Email Tools
-description: Connect, test and disconnect the site's email provider for form notifications, and turn incoming email forwarding on or off, through MCP or the API.
+description: Configure Site and shared Organization email accounts, campaign limits, tests and incoming forwarding through MCP or the API.
 ---
 
 These tools manage the same settings as **Settings → Integrations → Email & notifications** in the portal: the
@@ -22,6 +22,61 @@ incoming routes and receipts.
 | `read_incoming_email_receipt`   | `GET /api/v1/sites/{siteId}/delivery/inbound/{receiptId}` |
 
 ## Outgoing email provider
+
+The account-sharing and campaign-limit options below require Extension runtime
+**0.47.0 or later**. Check the runtime installed by your host; older releases
+provide only each Site's own account. These options are prepared for that
+release and do not change an existing Cloud installation until it is upgraded.
+
+Each Site chooses its own outgoing account and campaign budget in **Settings →
+Integrations → Email & notifications**. An Organization owner can configure a
+shared account under **Account settings → Organization email** and explicitly
+allow individual Sites to use it. New Sites receive no access automatically.
+The Site administrator then chooses the Organization account; granting access
+alone does not switch the Site's sender.
+
+Shared credentials remain at Organization level. Site reads expose only the
+shared sender and whether access is available. Rotation takes effect for future
+sends. Withdrawing access stops future sends through that account, with no
+automatic fallback. A send already in progress may finish. The Site may retain
+its own account while using the shared account.
+
+`get_email_settings` additionally returns `source` (`site`, `organization` or
+`none`), `site_email` (the masked Site account), `organization_email` (safe grant
+metadata) and `bulk_email`:
+
+```json
+{ "daily_limit": 10, "minimum_interval_minutes": 15 }
+```
+
+Use `set_email_settings source="organization"` to select an available shared
+account, or `source="site"` for the Site account. Use
+`set_email_settings bulk_email={daily_limit:10,minimum_interval_minutes:15}`
+to save campaign limits independently of account credentials. The daily range
+is 0–10,000; 0 stops campaign sending. The interval is 1–1,440 minutes. These
+limits apply across the Site's apps, including when Sites share one account.
+The day resets at midnight UTC. Provider limits still apply. Transactional
+mail, such as confirmations and user-requested edit links, uses its separate
+allowance and does not consume this campaign budget.
+
+Organization tools require a current **owner**, through a personal connection
+or an Organization API key issued by a current owner. Site keys and keys issued
+by an administrator cannot manage shared credentials or grants.
+
+| Tool                                 | REST                                |
+| ------------------------------------ | ----------------------------------- |
+| `get_organization_email_settings`    | `GET /api/v1/organization/email`    |
+| `set_organization_email_settings`    | `PUT /api/v1/organization/email`    |
+| `remove_organization_email_settings` | `DELETE /api/v1/organization/email` |
+| `send_organization_test_email`       | `POST /api/v1/organization/email`   |
+
+Read the Organization settings first. Writes and disconnects require its
+`revision` as `expected_revision`; a conflict requires reloading and reviewing
+the current grants. The set tool accepts provider `type`, `from`, `reply_to`,
+`config` and an explicit `allowed_site_ids` array. Omitted fields are preserved;
+an empty array withdraws every grant. Disconnecting removes the shared account
+and all grants. The test tool takes one `to` address and sends one test only
+when requested; it does not start a campaign.
 
 Form email actions (notifications and visitor confirmations, see
 [Forms](../forms/#email-notifications-and-webhooks)) send through one provider
@@ -89,6 +144,10 @@ Save the provider first. A provider error is returned as `502` with its message.
 Disconnects the provider and deletes its stored credentials. Form email actions
 are skipped until a provider is connected again. Form actions themselves are
 not changed.
+
+When the Site selected a shared Organization account, disconnecting deselects
+it for this Site. It does not delete the Organization account or the Site's
+preserved own credentials.
 
 ## Incoming email forwarding
 

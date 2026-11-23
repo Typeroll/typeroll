@@ -88,6 +88,12 @@ export const pageTools: ToolDef[] = [
     }),
   },
   {
+    name: 'read_published_page',
+    description: 'Read the page from the last verified publication of this version: public title, fields, address, source revision and publication ID. Never includes a working copy, private fields or pending proposals. Returns 404 when no verified public source exists. Use this for facts intended for external messages, rather than read_page.',
+    inputSchema: { page_id: z.string(), version: versionParam },
+    handler: withErrorBoundary(async (args, { client, siteId }) => ok(await client.get(siteId, `pages/${encodeURIComponent(args.page_id)}/published`, v(args.version)))),
+  },
+  {
     name: 'batch_read_pages',
     description:
       'Read up to 200 pages in a single call. Returns pages_by_id — a map keyed by page_id for easy lookup — plus a not_found list. Use to bulk-load context before a redesign sweep.',
