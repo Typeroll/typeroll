@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.46 (candidate, MCP 0.45.148 unchanged)
+
+- Respect Cloudflare's 500-item page limit when reading Bulk Redirect lists.
+  Normalize the provider's decoded Unicode and unreserved source bytes before
+  comparing staged contents, while retaining encoded reserved delimiters such
+  as `%2F`. Preserve every authored rule and keep other Sites' entries intact.
+- Cover multi-page lists and the provider's URL presentation in offline
+  regression fixtures before activating redirect overflow.
+
 ## 0.3.45 (candidate, MCP 0.45.148)
 
 - Publish exact-path redirect overflow with account-scoped Cloudflare Bulk

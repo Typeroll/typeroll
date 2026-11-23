@@ -24,6 +24,16 @@ const owner = (ctx: BulkRedirectContext) => `typeroll:${digest(JSON.stringify([c
 const owned = (ctx: BulkRedirectContext, item: Item) => item.comment.startsWith(owner(ctx) + ':');
 const hashItems = (items: Item[]) => digest(JSON.stringify([...items].sort((a, b) => a.redirect.source_url.localeCompare(b.redirect.source_url))));
 
+/** Cloudflare decodes unreserved source bytes and Unicode in API responses.
+ * Keep reserved delimiters encoded: /encoded%2Fpath is not /encoded/path.
+ */
+function canonicalSourcePath(path: string): string {
+  return path.replace(/%([a-f0-9]{2})/gi, (_encoded, hex: string) => {
+    const character = String.fromCharCode(parseInt(hex, 16));
+    return /^[a-z0-9._~-]$/i.test(character) ? character : '%' + hex.toUpperCase();
+  });
+}
+
 export interface BulkPlanReference { chunks: number; digest: string; count: number }
 export async function saveBulkPlan(job: string, rules: PagesPathRedirect[]): Promise<BulkPlanReference> {
   const text = JSON.stringify(rules), chunks = Math.ceil(text.length / 120000);
@@ -54,7 +64,7 @@ export function bulkRedirectItems(ctx: BulkRedirectContext, rules: PagesPathRedi
     } catch { throw new ConnectionError('An overflow source contains an invalid encoding or dot segment. Correct that source without broadening its redirect coverage.', 409, 'bulk_redirect_source_invalid'); }
   }
   return rules.map(rule => ({ comment: `${owner(ctx)}:${digest(ctx.publication).slice(0, 16)}`, redirect: {
-    source_url: ctx.host + new URL(rule.from_path, `https://${ctx.host}`).pathname,
+    source_url: ctx.host + canonicalSourcePath(new URL(rule.from_path, `https://${ctx.host}`).pathname),
     target_url: new URL(rule.to_path, `https://${ctx.host}`).href, status_code: rule.status_code,
     include_subdomains: false, subpath_matching: false, preserve_path_suffix: false, preserve_query_string: false,
   } }));
@@ -93,14 +103,19 @@ async function listItems(provider: ProviderClient, root: string, list: any): Pro
   if (!list) return [];
   const items: Item[] = [], cursors = new Set<string>(); let cursor = '';
   do {
-    const page = await provider(`${root}/rules/lists/${list.id}/items?per_page=1000${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`, { envelope: true });
+    const page = await provider(`${root}/rules/lists/${list.id}/items?per_page=500${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`, { envelope: true });
     if (!Array.isArray(page?.result)) throw new Error('Invalid Bulk Redirect list response');
     for (const item of page.result) {
       const r = item.redirect;
       if (typeof item.comment !== 'string' || !/^typeroll:[a-f0-9]{32}:[a-f0-9]{16}$/.test(item.comment) || !r ||
         typeof r.source_url !== 'string' || typeof r.target_url !== 'string' || ![301, 302].includes(r.status_code) ||
         r.include_subdomains === true || r.subpath_matching === true || r.preserve_path_suffix === true || r.preserve_query_string === true) throw new ConnectionError('A managed Bulk Redirect list was edited outside Typeroll. Review it before publishing; customer rules are not overwritten.', 409, 'bulk_redirect_conflict');
-      items.push({ comment: item.comment, redirect: { source_url: r.source_url, target_url: r.target_url, status_code: r.status_code, include_subdomains: false, subpath_matching: false, preserve_path_suffix: false, preserve_query_string: false } });
+      // Cloudflare returns Unicode paths decoded. Compare URL-normalized values
+      // without decoding reserved delimiters such as %2F into a different path.
+      if (!/^[a-z0-9.-]+(?:\/|$)/i.test(r.source_url)) throw new ConnectionError('The managed Bulk Redirect source changed format.', 409, 'bulk_redirect_conflict');
+      const source = new URL('https://' + r.source_url), target = new URL(r.target_url);
+      if (source.search || source.hash || source.username || source.password || source.port || !['https:', 'http:'].includes(target.protocol)) throw new ConnectionError('The managed Bulk Redirect URL changed format.', 409, 'bulk_redirect_conflict');
+      items.push({ comment: item.comment, redirect: { source_url: source.host + canonicalSourcePath(source.pathname), target_url: target.href, status_code: r.status_code, include_subdomains: false, subpath_matching: false, preserve_path_suffix: false, preserve_query_string: false } });
     }
     cursor = page.result_info?.cursors?.after || '';
     if (cursor && cursors.has(cursor) || items.length > 50000) throw new Error('Invalid Bulk Redirect pagination');

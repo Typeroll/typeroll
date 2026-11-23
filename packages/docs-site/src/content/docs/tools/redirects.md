@@ -132,7 +132,7 @@ generated slash aliases), the limits (`limit_static` 2000, `limit_dynamic` 100),
 `remaining_static` and `over_limit`. Page redirects and old file addresses share
 the same limit. Publication adds media replacement rules on top.
 
-### Static overflow (Core 0.3.45 and later)
+### Static overflow (Core 0.3.46 and later)
 
 Customer-account publishing can keep more than 2,000 exact-path rules without
 deleting redirects or adding a website function. The frozen publication keeps
