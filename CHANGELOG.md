@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.50 (candidate, MCP 0.45.150)
+
+- Preserve matching server and browser CSS in the media library and picker,
+  avoiding React hydration recovery when opening the media library.
+
 ## 0.3.49 (candidate, MCP 0.45.150)
 
 - Reconcile editor, API/MCP, migration, backup and developer media guidance:
