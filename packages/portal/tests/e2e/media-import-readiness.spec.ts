@@ -18,7 +18,7 @@ for (const width of [320, 1280]) test(`unfinished media stays inspectable withou
   page.on('request', request => { if (ids.slice(1).some(id => request.url().startsWith(url(id)))) unreadyRequests.push(request.url()); });
   await page.route('**/api/sites/default/media/upload-status', route => route.fulfill({ json: { enabled: true } }));
   await page.route('**/api/sites/default/media/preparation', route => route.fulfill({ json: { state: 'complete', completed: 0, total: 0 } }));
-  await page.route(url(ids[0]), route => route.fulfill({ contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jL1sAAAAASUVORK5CYII=', 'base64') }));
+  await page.route(url(ids[0]), route => route.fulfill({ contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=', 'base64') }));
   await e2eStore.setMany(media);
   try {
     await gotoReady(page, '/app/sites/default/media');
