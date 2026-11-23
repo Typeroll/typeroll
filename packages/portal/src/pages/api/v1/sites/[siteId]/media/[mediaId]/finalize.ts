@@ -1,16 +1,9 @@
-// POST /api/v1/sites/{siteId}/media/{mediaId}/finalize
-//
-// Applies the post-upload finishes on a single media item:
-//   1. CopyObject in place to set Cache-Control: public, max-age=31536000, immutable
-//      on the R2 original (so cdn.typeroll.com caches like the variants do).
-//      SVGs are sanitized first; only inert SVG is published (lib/media/svg-media.ts).
-//   2. Generates the AVIF/WebP responsive variants if not already present
-//      (same pipeline as /generate-variants — this endpoint subsumes that
-//      one for new uploads; keep generate-variants for surgical reruns).
-//
-// Idempotent — calling twice is a no-op the second time. Designed so the
-// upload client can call this immediately after PUT succeeds without
-// worrying about races or duplicate variant uploads.
+// Finalize a direct upload before referencing it. Connected storage verifies
+// and freezes the private original (sanitizing SVG when needed) and queues
+// private image preparation on the organization build engine. No synchronous
+// image transcoding happens here; connected originals stay private. Legacy
+// records use the compatibility cache/SVG path and request media migration.
+// Repeating finalization is safe; expected_sha256 verifies the source bytes.
 
 import type { APIRoute } from 'astro';
 import { paths, type Media } from '@typeroll/shared';

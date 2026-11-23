@@ -315,6 +315,46 @@ in WordPress removes its stored key.
   files.
 </Aside>
 
+## Media names and old file addresses
+
+The media library and [upload, preparation and publication stages](../media-for-editors/#uploading-preparing-and-publishing-are-separate)
+are separate from the old website's URL inventory. An import reserves a media
+identity before its copy finishes; an old HTML reference does not prove that
+the source still serves an image. Wait for verified copies before using them.
+Repair a refused or unavailable source instead of leaving the old host in HTML.
+
+Core 0.3.49 keeps WordPress folders relative to the uploads directory:
+
+| Old path                                        | New path within the Site's media area |
+| ----------------------------------------------- | ------------------------------------- |
+| `/wp-content/uploads/photo.jpg`                 | `/photo.jpg`                          |
+| `/wp-content/uploads/2024/05/photo.jpg`         | `/2024/05/photo.jpg`                  |
+| `/wp-content/uploads/2024/06/photo.jpg`         | `/2024/06/photo.jpg`                  |
+| `/wp-content/uploads/sites/7/2024/05/photo.jpg` | `/2024/05/photo.jpg`                  |
+
+Typeroll removes the WordPress and multisite prefixes; it does not flatten the
+remaining folders. Different files that still claim the same path receive
+permanent numeric names such as `photo-2.jpg`. Ordinary new uploads have no
+automatic date folders. A Site media host can serve those paths directly; an
+Organization's shared media host also includes the Site's isolated namespace.
+These names require the matching Core runtime in Cloud or a self-hosted update;
+a newer MCP client alone does not change the server.
+
+Rewriting HTML to these new addresses does not preserve old image-search
+results, links or embeds. Managed imports can declare the old uploads namespace
+for a prefix redirect to the new media area. Numbered collisions, sanitized
+names and explicit owner destinations keep exact exceptions. A generic URL
+import of one borrowed WordPress image does not authorize that namespace.
+Existing stored redirects are preserved. Known older hash addresses can remain
+as safe static aliases for included media; they do not require a new redirect
+for every replacement or variant.
+
+Before launch, include historical images and PDFs in URL verification, not only
+currently used page images. The import does not archive or publish every old
+attachment. A prefix cannot restore a missing file, and a file in a private
+archive does not preserve its public URL. Resolve each required file's delivery
+and review the [image and file redirect policy](../../tools/redirects/#image-and-file-addresses).
+
 ## Large image libraries
 
 Image transfers use a persistent lookup for each source URL, so repeated imports

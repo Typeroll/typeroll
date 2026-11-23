@@ -86,6 +86,20 @@ to returned media URLs. Use direct upload URLs for local bytes and the customer
 transfer flow for remote media; do not relay large base64 payloads through the
 model. Preserve alt text, captions, dimensions, links and image variants.
 
+### Media identity and public URL checks
+
+Follow `tr-images` for upload → verification → private preparation → publication.
+Do not use pending imports or share authenticated editor URLs. From Core
+0.3.49, new uploads default to root filenames without date folders; explicit
+folders and WordPress upload-relative folders remain supported. Read returned
+paths rather than flattening names or predicting numeric collision suffixes.
+Keep each Site's media namespace separate, including when several old Sites
+are merged. Verify historical image/PDF URLs independently of rewritten HTML;
+use established prefix mappings and exact exceptions, not a redirect for every
+new variant. The matching Core runtime is required. See
+https://typeroll.com/docs/tools/media/ and
+https://typeroll.com/docs/tools/redirects/#image-and-file-addresses.
+
 ## Listing and verification
 
 An archive is a Page with `core/page_list` filtered by `content_type`. Configure

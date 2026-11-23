@@ -4,6 +4,7 @@ import { importStorageStatus, requireImportStorage } from '../media/import-polic
 import { paths, type Media } from '@typeroll/shared';
 import type { ReadWriteStore } from '../datastore';
 import { createMediaUpload, finalizeTransferredMedia, storageClient } from '../publishing/media-storage';
+import { preferredPublicMediaPath, wordpressMediaPath } from '../media/public-path';
 import { durableTransfer, remoteMediaTransfers, transferPath } from '../media/transfer';
 import { MediaImportPendingError, permanentImportFailure, scheduleImportRetry, type ImportingMedia } from '../media/import-retry';
 import { DeleteObjectCommand } from '../net/s3';
@@ -80,37 +81,44 @@ export class WPMediaTransfer {
     const cleanFilename = sanitizeFilename(filenameFromUrl(wpUrl));
     const contentType = guessMimeType(cleanFilename);
 
-    return this.transferPrivate(wpUrl, cleanFilename, contentType, altHint ?? '');
+    return this.declareUploads(await this.transferPrivate(wpUrl, cleanFilename, contentType, altHint ?? ''), wpUrl);
   }
 
   /** Import a source URL with optional metadata from the public API or an agent. */
   async importUrl(sourceUrl: string, options: { filename?: string; contentType?: string; altText?: string } = {}): Promise<UploadedMedia> {
     await requireImportStorage(this.orgId);
-    const derived = sanitizeFilename(options.filename ?? filenameFromUrl(sourceUrl));
+    const derived = options.filename ?? sanitizeFilename(filenameFromUrl(sourceUrl));
     const contentType = options.contentType ?? guessMimeType(derived);
     // A name without the type's extension gets it appended, whether chosen or
     // taken from the source URL; createMediaUpload answers 415 for other types.
     const filename = derivedFilename(derived, contentType);
-    return this.transferPrivate(sourceUrl, filename, contentType, options.altText ?? '');
+    const publicPath = options.filename === undefined ? undefined : preferredPublicMediaPath({ filename, mime_type: contentType } as Media);
+    return this.transferPrivate(sourceUrl, filename, contentType, options.altText ?? '', undefined, undefined, publicPath);
   }
 
   async transfer(item: WPMedia): Promise<UploadedMedia> {
     await requireImportStorage(this.orgId);
     const derived = sanitizeFilename(filenameFromUrl(item.source_url));
     const contentType = item.mime_type ?? guessMimeType(derived);
-    return this.transferPrivate(item.source_url, derivedFilename(derived, contentType), contentType, item.alt_text ?? '', item.media_details?.width, item.media_details?.height);
+    return this.declareUploads(await this.transferPrivate(item.source_url, derivedFilename(derived, contentType), contentType, item.alt_text ?? '', item.media_details?.width, item.media_details?.height), item.source_url);
   }
 
-  private async transferPrivate(oldUrl: string, filename: string, contentType: string, altText: string, width?: number, height?: number): Promise<UploadedMedia> {
+  private async declareUploads(result: UploadedMedia, source: string): Promise<UploadedMedia> {
+    const wp = wordpressMediaPath(source);
+    if (wp) await this.store.updateDoc(`${paths.media(this.orgId, this.siteId)}/${result.mediaId}`, { wordpress_upload_prefix: wp.prefix });
+    return result;
+  }
+
+  private async transferPrivate(oldUrl: string, filename: string, contentType: string, altText: string, width?: number, height?: number, publicPath?: string): Promise<UploadedMedia> {
     // Readiness must be checked even when reusing an import. A disconnected
     // customer account must never silently fall back to the old WordPress host.
     await requireImportStorage(this.orgId);
     return durableTransfer(this.store, paths.site(this.orgId, this.siteId), oldUrl, () =>
-      remoteMediaTransfers.run(new URL(oldUrl).host, 1, () => this.copyPrivate(oldUrl, filename, contentType, altText, width, height)),
+      remoteMediaTransfers.run(new URL(oldUrl).host, 1, () => this.copyPrivate(oldUrl, filename, contentType, altText, width, height, publicPath)),
       async result => (await this.store.getDoc<Media>(`${paths.media(this.orgId, this.siteId)}/${result.mediaId}`))?.storage?.state === 'ready');
   }
 
-  private async copyPrivate(oldUrl: string, filename: string, contentType: string, altText: string, width?: number, height?: number): Promise<UploadedMedia> {
+  private async copyPrivate(oldUrl: string, filename: string, contentType: string, altText: string, width?: number, height?: number, publicPath?: string): Promise<UploadedMedia> {
     const candidates = await this.store.listDocs<ImportingMedia>(paths.media(this.orgId, this.siteId),
       { filters: [{ field: 'source_url', op: '==', value: oldUrl }], limit: 10 });
     const existing = candidates.find(item => item.storage?.state === 'ready');
@@ -121,7 +129,7 @@ export class WPMediaTransfer {
     const pending = candidates.find(item => item.import_pending && item.storage?.state === 'uploading');
     const upload = pending ? { mediaId: pending.id, key: pending.storage!.key, cdnUrl: pending.cdn_url } : await createMediaUpload(this.orgId, this.siteId, { filename, contentType, altText, actor: 'wordpress-import' });
     const mediaPath = `${paths.media(this.orgId, this.siteId)}/${upload.mediaId}`;
-    await this.store.updateDoc(mediaPath, { source_url: oldUrl, source_aliases: [oldUrl], import_pending: true });
+    await this.store.updateDoc(mediaPath, { source_url: oldUrl, source_aliases: [oldUrl], import_pending: true, ...(!pending && publicPath ? { public_path: publicPath } : {}) });
     const media = await this.store.getDoc<Media>(mediaPath);
     const r2 = await storageClient(this.orgId, media!.storage!);
     try {

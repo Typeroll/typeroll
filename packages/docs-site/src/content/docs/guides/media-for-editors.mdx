@@ -22,6 +22,80 @@ offers every kind.
   [file names and types](../../tools/media/#file-names-and-types).
 - **Size:** up to 25 MB per file. Compress a long video first.
 
+## Uploading, preparing and publishing are separate
+
+For new files in connected Organization storage:
+
+| Stage                       | What it means                                                                         | Publicly shareable?                  |
+| --------------------------- | ------------------------------------------------------------------------------------- | ------------------------------------ |
+| Uploading or pending import | A library record exists, but its file has not been copied and verified.               | No; it cannot be selected yet.       |
+| Ready                       | The original has been verified. You can select it and use its private preview.        | Not from uploading alone.            |
+| Images prepared             | Smaller image versions are ready in private storage for a future publication.         | No.                                  |
+| Website published           | Referenced files have been copied into public delivery and page references rewritten. | Yes, at the published media address. |
+| PDF published separately    | **Publish PDF** has copied and verified the file without a website build.             | Yes, at **Copy public URL**.         |
+
+A thumbnail, a library record or an address in an API response does not prove
+that a public file exists. The private preview requires access to the Site;
+its `/api/sites/…/media/…/content` address is not a link to give visitors.
+Media is shared by all versions of a Site, so a redesign branch uses the same
+library as Main. Uploading another file does not replace the live image.
+
+### When an image is unavailable
+
+From Core 0.3.48, unfinished imports stay visible with an explanation, while
+selection and previews are disabled. Earlier versions could leave references
+to an import whose source later refused the copy. A URL that was present in old
+HTML can also have stopped serving an image, or can return an HTML error page.
+
+Check the file's source and retry the import or upload a working replacement.
+Do not delete a file just because its migration failed: inspect references
+first. Temporary failures retry automatically; a refused source or failed
+checksum needs correction. Publishing reports missing referenced files and
+stops by default. An explicit decision to publish without them leaves their
+references empty; it does not make the old source a fallback. See
+[media transfer and recovery](../customer-publishing/#media-migration-and-independent-builds).
+
+## File names and folders
+
+From **Core 0.3.49** (MCP **0.45.150**), new uploads use their filename in the
+root of the site's media area: `photo.jpg`. Typeroll does not add year/month
+folders. In file details, **Public path** lets you choose an optional folder,
+for example `/products/photo.jpg`. A WordPress import keeps existing folders
+such as `2024/05/photo.jpg`, without `wp-content/uploads` in the new address.
+Cloud needs the matching platform release; self-hosted installations need to
+update Core.
+
+Names are assigned when the file is first published. If different bytes already
+use that name, Typeroll adds a number: `photo-2.jpg`, then `photo-3.jpg`. Existing
+public addresses keep serving their original bytes; deleting a file does not
+make its old name available for a different file. Renaming the display filename
+does not move a published file. Changing **Public path** takes effect on the next
+publication and retains previous safe addresses for the included file.
+
+The root is the Site's media area. With a Site media host it can be
+`https://images.example.com/photo.jpg`; an Organization's shared host adds an
+isolated Site namespace, for example
+`https://media.example.com/media/<site-prefix>/photo.jpg`. That namespace keeps
+files from different Sites separate. It is not an automatic date folder.
+
+Folders are part of the public path, not a second directory browser in the
+library. In a WordPress import, `2024/05/photo.jpg` and `2024/06/photo.jpg` stay
+separate names; Typeroll does not flatten them into the same folder. Clearing
+**Public path** explicitly chooses the current filename again. A filename
+containing an explicit folder retains that folder.
+
+Earlier safe names remain available while that file is included in the
+publication. A name reservation prevents another file from reusing cached
+bytes; it does not keep deleted or unused media in every future website build.
+Omission from a later build does not remove an existing public R2 copy or a
+cached response. To remove a file, delete it and check the cleanup result.
+Individually published PDFs keep their separate public link until deletion.
+For an old image URL that must remain reachable, verify its alias or redirect
+on the published site, especially after replacing or retiring the image.
+
+Responsive image versions still use generated variant names. Copy the public
+URL offered by Typeroll instead of constructing addresses yourself.
+
 ## Publish a PDF and share its link
 
 Available from **Core 0.3.44** (MCP **0.45.147**). Cloud needs the matching
@@ -44,7 +118,7 @@ for signed-in site members; its `/api/sites/…/content` address is not a sharin
 link. The image-preparation notice concerns image variants, not PDFs.
 
 Public addresses use the configured media domain, an anonymous site namespace,
-and a content-based filename. Renaming the file's display name or publishing
+and a permanent filename (a content-based filename on older releases). Renaming the file's display name or publishing
 the website again does not change an individually published PDF's link.
 Uploading a new version creates a new file and address; existing links continue
 to show the old file until it is deleted. Keep this in mind for printed links.
@@ -115,8 +189,12 @@ desktop; both positions can differ per screen size.
 
 - **Rename** a file or change its title and caption in its details panel. The
   extension must match the file type.
-- **Replace** an image on a page by picking another file in the block. The old
-  file stays in the library.
+- **Replace** an image on a page by uploading and selecting another file in the
+  block. Different bytes with the same name receive a new numbered public
+  address at publication, so an old cached image cannot appear at the new URL.
+  The old file stays in the library. An agent can use `replace_media` for a
+  deliberate replacement throughout all versions of the Site, after reviewing
+  its dry run; this does not save every Page or delete either file.
 - **Delete** a file only when no page uses it: deleting removes it from storage,
   and pages that still show it break. An AI agent can check where a file is used
   with `search_pages` before you delete it.

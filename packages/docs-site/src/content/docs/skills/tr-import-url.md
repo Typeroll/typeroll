@@ -22,14 +22,12 @@ Use standard blocks first, reviewed custom types next, rare documented HTML last
 All four combinations must preserve or meaningfully redirect every old public URL. That
 shared contract defines acceptance; this recipe only adds source-specific steps.
 
-
 > **The buffer model (draft writes).** Every content write in this recipe
 > (pages, blocks and partials) lands in an unsaved per-doc
 > DRAFT — deploys and plain previews only see SAVED content. For recipe-style
 > build work, pass `save: true` on write calls (the work is pre-approved by
 > the task itself), or run `commit_working_copy` per doc before any
 > `trigger_deploy`. Preview your drafts with `include_working_copy: true`.
-
 
 ## When to use this vs tr-migrate-wp
 
@@ -159,6 +157,19 @@ Do not infer a wildcard from a partial inventory or create automatic redirects
 for private and never-public addresses. Existing configured rules stay intact;
 Core 0.3.48 compacts equivalent per-file lines only in frozen publication output.
 See https://typeroll.com/docs/tools/redirects/ for the policy and Bulk quotas.
+
+From Core 0.3.49, new uploads default to the media root (`photo.jpg`), without
+automatic year/month folders. Explicit folders and WordPress upload-relative
+folders are preserved; `wp-content/uploads` and multisite prefixes are removed
+from new addresses. Different bytes receive permanent numeric names (`photo-2.jpg`);
+safe old aliases for included media stay available without a redirect per replacement.
+Managed WordPress imports declare their uploads namespace so publication can
+use one prefix with exact collision exceptions. A borrowed image alone does
+not declare a namespace. Check the returned public paths and the complete old
+URL inventory; Cloud requires the corresponding platform release. A reserved name
+does not retain a deleted or unused file in every future build. Private object
+keys and responsive variants can still contain hashes; never construct URLs
+from those internal keys.
 
 If the source URLs differ from the target slugs, create redirects:
 

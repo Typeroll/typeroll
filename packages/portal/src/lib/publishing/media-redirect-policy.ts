@@ -38,18 +38,25 @@ export function compactCoveredMediaRedirects<T extends Pick<Redirect, 'from_path
 }
 
 /** Keep omitted rows in routing history for domain-only republications. */
-export function freezeMediaRedirects<T extends Pick<Redirect, 'from_path' | 'to_path' | 'status_code'>>(rules: T[], policy?: TrailingSlashPolicy, publication: { pages?: Page[]; contentTypes?: ContentType[]; blockTypes?: unknown[]; pageTemplates?: unknown[] } = {}) {
+type RoutingContent = { pages?: Page[]; contentTypes?: ContentType[]; blockTypes?: unknown[]; pageTemplates?: unknown[] };
+
+export function mediaRedirectLivePaths(publication: RoutingContent): string[] | null {
   const paginated = (value: unknown): boolean => !!value && typeof value === 'object' && Object.entries(value).some(([key, entry]) =>
     (key === 'paginate' && typeof entry === 'number' && entry > 0) || paginated(entry));
   // Facets and pagination add routes after freezing. Without their complete
   // rendered inventory, retain exact mappings rather than assume coverage.
-  if (publication.contentTypes?.some(type => type.facets?.length) || paginated({ pages: publication.pages, blockTypes: publication.blockTypes, pageTemplates: publication.pageTemplates })) return { redirects: rules, omitted: [] as T[] };
+  if (publication.contentTypes?.some(type => type.facets?.length) || paginated({ pages: publication.pages, blockTypes: publication.blockTypes, pageTemplates: publication.pageTemplates })) return null;
   const types = new Map([[DEFAULT_CONTENT_TYPE.id, DEFAULT_CONTENT_TYPE], ...(publication.contentTypes ?? []).map(type => [type.id, type] as const)]);
-  const live = ['/', ...(publication.pages ?? []).flatMap(page => {
+  return ['/', ...(publication.pages ?? []).flatMap(page => {
     const type = types.get(page.content_type ?? 'page');
     const url = type && contentPagePath(page, type);
     return url ? [url] : [];
   })];
+}
+
+export function freezeMediaRedirects<T extends Pick<Redirect, 'from_path' | 'to_path' | 'status_code'>>(rules: T[], policy?: TrailingSlashPolicy, publication: RoutingContent = {}) {
+  const live = mediaRedirectLivePaths(publication);
+  if (!live) return { redirects: rules, omitted: [] as T[] };
   const redirects = compactCoveredMediaRedirects(rules, policy, live), kept = new Set(redirects);
   return { redirects, omitted: rules.filter(rule => !kept.has(rule)) };
 }

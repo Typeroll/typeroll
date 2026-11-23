@@ -16,14 +16,12 @@ Use standard blocks first, reviewed custom types next, rare documented HTML last
 All four combinations must preserve or meaningfully redirect every old public URL. That
 shared contract defines acceptance; this recipe only adds source-specific steps.
 
-
 > **The buffer model (draft writes).** Every content write in this recipe
 > (pages, blocks and partials) lands in an unsaved per-doc
 > DRAFT — deploys and plain previews only see SAVED content. For recipe-style
 > build work, pass `save: true` on write calls (the work is pre-approved by
 > the task itself), or run `commit_working_copy` per doc before any
 > `trigger_deploy`. Preview your drafts with `include_working_copy: true`.
-
 
 The platform's migration workflow is the "managed" path for customers who
 want one-click. It runs on the server and is also available to you:
@@ -67,7 +65,6 @@ review the plan before applying it in a dedicated Version. Equal hex values can
 mean different roles: never automatically choose between background and text.
 Verify a primary/surface change in a test Version across header, footer, cards,
 menus and buttons, then restore the test settings. Do not republish automatically.
-
 
 
 ## Preconditions
@@ -247,6 +244,19 @@ c. Migrate referenced images with `upload_media_from_url`. The customer's
    delete existing rules after rewriting HTML. Core 0.3.48 omits redundant
    per-file lines covered by an equivalent existing rule in the frozen output,
    without changing stored rules. See https://typeroll.com/docs/tools/redirects/.
+
+From Core 0.3.49, new uploads default to the media root (`photo.jpg`), without
+automatic year/month folders. Explicit folders and WordPress upload-relative
+folders are preserved; `wp-content/uploads` and multisite prefixes are removed
+from new addresses. Different bytes receive permanent numeric names (`photo-2.jpg`);
+safe old aliases for included media stay available without a redirect per replacement.
+Managed WordPress imports declare their uploads namespace so publication can
+use one prefix with exact collision exceptions. A borrowed image alone does
+not declare a namespace. Check the returned public paths and the complete old
+URL inventory; Cloud requires the corresponding platform release. A reserved name
+does not retain a deleted or unused file in every future build. Private object
+keys and responsive variants can still contain hashes; never construct URLs
+from those internal keys.
 
 The managed importer stores cleaned HTML. Typeroll does not convert HTML into blocks, and `set_page_mode` never rewrites HTML. You, the external agent, rebuild the imported content with ordinary block tools. The owner does not need to convert every Page manually. There is no editor conversion preview; it was removed in Core 0.2.58. Preserve the complete source before switching modes and never publish the empty intermediate Page.
 
@@ -480,7 +490,6 @@ Compare ordered headings/text/media/CTAs, including malformed wrappers, lazy and
 noscript images and related-content boundaries. Existing Pages are not rewritten;
 repair confirmed placement errors against raw source without reimporting edits.
 
-
 ## Navigation and empty-media variants
 
 Inventory first-step input banners independently of final submission providers.
@@ -496,7 +505,6 @@ placeholder settings for theme decoration, preserving real featured images and
 explicit `show_image: false`. Compare actual footer link height plus gap, wrapping,
 focus and column breakpoints; compact navigation density is an intentional option.
 Verify native preview and static output on the agreed viewport boundaries.
-
 
 ## Before retiring the source
 

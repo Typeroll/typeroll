@@ -151,6 +151,14 @@ prepends the site's namespace (for example `/media/abc123`) to every path. With
 automatic DNS, Typeroll creates both; with external DNS you create them, and
 the publication shows the exact rule.
 
+That namespace separates Sites sharing the bucket; it is not a year/month
+folder or a filename hash. Core 0.3.49 defaults new files to readable root
+names, supports optional folders and retains WordPress upload-relative folders.
+See [file names and folders](../../guides/media-for-editors/#file-names-and-folders)
+and the [old file address policy](../../tools/redirects/#image-and-file-addresses)
+before changing image paths. Updating a hostname or current HTML alone does
+not preserve every externally used file URL.
+
 A publication does not replace the live site, and the media host is not shown
 as live, until Cloudflare reports the custom domain and its certificate as
 active and the host answers over HTTPS with the exact bytes of the publication's

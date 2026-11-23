@@ -50,8 +50,15 @@ guide for your source. The tools below are described in
 - [ ] **Internal links.** Links in the content point to the new addresses, not
       to the old domain or to redirects. `check_internal_links` finds broken
       saved links.
-- [ ] **Media.** Images are transferred to the site's own media storage, with
-      their alt text. Nothing loads from the old host.
+- [ ] **Media.** Images are transferred and verified in the site's own media
+      storage, with their alt text. Pending library entries do not count as
+      copied files. Nothing loads from the old host.
+- [ ] **Historical file addresses.** Check old image/PDF URLs used by image
+      search, external embeds and shared links separately from current HTML.
+      Prefer safe aliases or an established uploads-prefix mapping; keep exact
+      exceptions for renamed files. Preserve imported folders and review
+      [the media redirect policy](../../tools/redirects/#image-and-file-addresses)
+      instead of adding a redirect per upload or discarding configured rules.
 - [ ] **Languages.** Language versions keep their hreflang links on all sides.
 
 ## Before switching DNS

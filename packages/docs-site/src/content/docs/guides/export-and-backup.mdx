@@ -54,17 +54,25 @@ at read or write level cannot download one.
 
 ## Mirror the media
 
-The manifest's media list is enough for a simple download script, for example:
+Use `export-manifest.json` as a download work list and keep it with the files.
+Preserve the full source hostname and relative path, or use a manifest key
+that maps each URL to a unique local file. Do not flatten downloads with
+`curl -O`: `2024/05/photo.jpg` and `2024/06/photo.jpg` would overwrite the same
+basename. Keep original files and generated variants distinct too.
 
-```bash
-unzip site-export.zip -d site-export
-mkdir -p media && cd media
-node -e "for (const url of require('../site-export/export-manifest.json').media_urls) console.log(url)" \
-  | xargs -n 1 curl -fsSLO
-```
+An export can name authenticated editor references as well as public media.
+Fetch private references through the owning portal with a scoped credential;
+never forward that credential to a foreign media host or a redirect destination.
+Signed upload URLs are not download or archive addresses. Record success,
+size and a verified checksum per file, retry incomplete downloads, and test a
+restore. A list of addresses alone is not a verified backup of their bytes.
 
-`curl -O` names each file after the last part of its address. Keep the
-manifest with the files so each one can be matched to its original address.
+The content export carries media records, not the entire live routing and
+reservation history. To preserve a running installation's URL ownership and
+historical copies, use the self-hosted full datastore backup and back up R2
+independently; a fresh content-only rebuild is not proof of URL continuity.
+See [source media archiving](../wordpress-migration/#preserve-originals-before-retiring-wordpress)
+for a migration-specific archive.
 
 ## Build the site from an export
 

@@ -13,7 +13,8 @@ This is the `tr-images` recipe exactly as the Typeroll MCP server gives it to ag
 
 The Typeroll API does NOT accept image bytes directly. Uploads go
 through a signed PUT URL straight to Cloudflare R2, and the API only
-sees the metadata. Two-step flow:
+sees the metadata. For local files, mint an upload URL, PUT the bytes, then
+finalize and verify the result before referencing it:
 
 For public source URLs, prefer `upload_media_from_url`; for 2–50 files use
 `upload_media_batch_from_urls` (max 25 MiB per file). Both download, upload,
@@ -37,6 +38,19 @@ Private editor addresses and never-public variants need no automatic redirects.
 Do not delete configured redirects merely because current HTML no longer uses
 them. Core 0.3.48 compacts equivalent per-file rules in the frozen publication;
 stored rules stay intact. See https://typeroll.com/docs/tools/redirects/.
+
+From Core 0.3.49, new uploads default to the media root (`photo.jpg`), without
+automatic year/month folders. Explicit folders and WordPress upload-relative
+folders are preserved; `wp-content/uploads` and multisite prefixes are removed
+from new addresses. Different bytes receive permanent numeric names (`photo-2.jpg`);
+safe old aliases for included media stay available without a redirect per replacement.
+Managed WordPress imports declare their uploads namespace so publication can
+use one prefix with exact collision exceptions. A borrowed image alone does
+not declare a namespace. Check the returned public paths and the complete old
+URL inventory; Cloud requires the corresponding platform release. A reserved name
+does not retain a deleted or unused file in every future build. Private object
+keys and responsive variants can still contain hashes; never construct URLs
+from those internal keys.
 
 ### 1. Get an image
 
@@ -69,8 +83,8 @@ Returns:
 ```json
 {
   "upload_url": "https://...r2.cloudflarestorage.com/.../signed-...",
-  "cdn_url": "https://cdn.example.com/orgs/.../images/...png",
-  "key": "orgs/.../images/...png",
+  "cdn_url": "https://portal.example.com/api/sites/site/media/abc123/content",
+  "key": "private/media/<site-prefix>/uploads/<upload-id>/hero-services.png",
   "media_id": "abc123",
   "expires_in": 300
 }
@@ -93,10 +107,12 @@ Body: <file bytes>
 In a shell:
 
 ```bash
-curl -sS -X PUT --data-binary @hero-services.png "$UPLOAD_URL"
+curl --fail-with-body -sS -X PUT -H "Content-Type: image/png" \
+  --data-binary @hero-services.png "$UPLOAD_URL"
 ```
 
-Optionally with `-H "Content-Type: image/png"` if you need to override what R2 will infer. **Nothing else.**
+Send the same `Content-Type` used to request the upload URL. Do not attach your
+Typeroll API key or copy the URL's signing query parameters into headers.
 
 > The signed URL embeds checksum-related query parameters
 > (`x-amz-checksum-crc32`, `x-amz-sdk-checksum-algorithm`) for legacy
@@ -115,16 +131,20 @@ await fetch(uploadUrl, {
 });
 ```
 
-Parallelise N uploads via shell `&` + `wait`:
+For many local files, use bounded concurrency and record each PUT result
+against its media ID. Send each file's declared Content-Type, finalize only
+successful uploads, and inspect every finalization result before creating
+references. A background shell loop's final exit code does not prove that
+all its uploads succeeded. Retry failed entries, not the entire batch.
 
-```bash
-while IFS=$'\t' read -r filename signed_url; do
-  curl -sS -X PUT --data-binary @"$filename" "$signed_url" &
-done < manifest.tsv
-wait
-```
-
-A 200 OK from R2 means the image is now live at `cdn_url`.
+A successful PUT means the upload reached storage; it is not yet a verified
+or public image. Call `finalize_media media_id=<id> expected_sha256=<source-hash>`
+(or the returned finalization endpoint) and inspect the result before referencing it.
+Finalization freezes the private original and queues background image
+preparation. It does not publish the file. Use the returned authenticated
+`cdn_url` in content only after verification; website publication rewrites it
+to the public address. A PDF can be published separately with
+`publish_media_file`. A 202/pending import is not a completed upload.
 
 ### 4. Patch metadata (alt text, etc.)
 
@@ -202,9 +222,10 @@ width, without upscaling or duplicate width descriptors. Check `currentSrc` and
 the actual encoded dimensions on the published site; the CMS preview can use the
 original and hide an undersized derivative. Do not compensate with custom CSS
 or `sizes` alone. Existing static sites need republication for the versioned v2
-recipe; unchanged subsequent builds reuse verified media. Explicit API variant
-workflows must regenerate their variant metadata before rebuilding.
-
+recipe; unchanged subsequent builds reuse verified media.
+`generate_image_variants` reports pending build-time work; it does not encode
+variants synchronously or repair a broken upload. Inspect `get_media_preparation`
+and the actual published output instead of looping that endpoint.
 
 ## Replace an existing image efficiently
 

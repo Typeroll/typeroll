@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.3.49 (candidate, MCP 0.45.150)
+
+- Reconcile editor, API/MCP, migration, backup and developer media guidance:
+  private originals, upload verification, background preparation, readable names,
+  alias retention, Pages/Bulk routing, PDF sharing and incomplete deletion.
+  Remove obsolete claims of immediate public uploads or synchronous variants.
+
+- Use readable immutable public media names. New uploads default to the media
+  root without date folders; explicit folders and WordPress upload-relative
+  folders are preserved. Allocate permanent numeric collision names atomically
+  and keep old safe public URLs as static copies instead of per-image redirects.
+- Map declared WordPress uploads namespaces to the new media host with exact
+  filename exceptions. Preserve authored rules and protect live page routes;
+  use exact mappings when a safe prefix or dynamic capacity is unavailable.
+- Expose the optional public path in file details and document naming, folder,
+  replacement and migration behavior for editors, REST and MCP agents.
+
 ## 0.3.48 (candidate, MCP 0.45.149)
 
 - Omit equivalent per-file redirect lines already covered by existing patterns

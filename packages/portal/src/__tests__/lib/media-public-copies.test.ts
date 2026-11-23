@@ -615,3 +615,13 @@ describe('listing a bucket prefix', () => {
     await expect(listKeys(denied as any, new URL('https://acct.r2.cloudflarestorage.com/bucket/'), 'media/a/')).rejects.toThrow('AccessDenied');
   });
 });
+
+it('finds Unicode paths, nested names and earlier assigned names without crossing site ownership', async () => {
+ await setup();
+ const { copyScope, keyForUrl, identityBases, mediaIdentity } = await import('../../lib/media/public-copies');
+ const scope = await copyScope(ORG, SITE);
+ const item = record({ public_path: '/products/Höstlöv-2.jpg', public_path_history: [{ path: '/Höstlöv.jpg', sha256: 'b'.repeat(64) }] });
+ expect(keyForUrl(`https://${ORG_HOST}/${PREFIX}/products/H%C3%B6stl%C3%B6v-2.jpg`, scope)).toEqual({ key: `${PREFIX}/products/Höstlöv-2.jpg` });
+ expect(identityBases(mediaIdentity(item), scope)).toContain(`${PREFIX}/Höstlöv.jpg`);
+ expect(keyForUrl(`https://${ORG_HOST}/media/another/H%C3%B6stl%C3%B6v.jpg`, scope)).toEqual({ refused: 'foreign_prefix' });
+});

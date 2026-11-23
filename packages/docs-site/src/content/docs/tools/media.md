@@ -29,9 +29,28 @@ removal must finish first. Non-PDF files return `media_file_type_unsupported`.
 The endpoint never starts a website build or changes DNS.
 
 The link remains stable across retries, display-name edits and website
-publications. A replacement upload has a new content-based URL. Deleting the
+publications. From Core 0.3.49, a replacement upload uses a new permanent
+filename, numbered when necessary; older releases used content-based names. Deleting the
 library item removes its explicit public copy as well. See the
 [editor's PDF workflow](../../guides/media-for-editors/#publish-a-pdf-and-share-its-link).
+
+## Which address should an agent use?
+
+| Value              | Meaning                                                                                                                                |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `media_id`         | Stable library identity. Keep it for reads, finalization, replacement and removal.                                                     |
+| `cdn_url`          | Reference to use in saved content after upload verification. In connected storage it is an authenticated editor URL, despite the name. |
+| `public_path`      | Preferred or allocated path within the Site's media area. It is not a hostname or proof of public delivery.                            |
+| `published_url`    | Address recorded by the latest main website publication that included the file. It may be absent before publication.                   |
+| `file_publication` | Separate PDF publication state; only `state: "public"` with the current byte identity is a verified sharing link.                      |
+| `public_url`       | Verified public address returned by `publish_media_file`.                                                                              |
+
+`readiness.selectable: true` permits use in content; it does not mean that the
+file is public. HTTP 202/pending and failed imports are not usable assets.
+Finalization and private image preparation do not publish a file. The website
+publisher rewrites verified editor references, imported aliases and variant
+references to the frozen public addresses. Do not replace them with guessed
+R2 keys, signed PUT URLs or manually concatenated filenames.
 
 ## Direct file uploads through the API
 
@@ -141,6 +160,35 @@ refuses because of the file itself (`media_svg_invalid`,
 shown, instead of leaving a broken item in the library. A concurrent change
 (`media_revision_conflict`) or a rate limit is retried; other errors, such as
 an expired sign-in, keep the uploaded file and show the reason.
+
+## Public names and folders
+
+From **Core 0.3.49** (MCP **0.45.150**), new uploads use the root filename with
+no automatic year/month folders. `public_path` accepts an optional folder such
+as `/products/photo.jpg`; `null` clears the choice. The first publication
+reserves the final name. Different bytes with the same name receive `-2`, `-3`,
+and so on, including after deletion; identical files may share a name.
+
+WordPress imports retain upload-relative folders such as `2024/05/photo.jpg`
+and omit the `wp-content/uploads` and multisite prefixes from new addresses.
+An explicitly chosen import filename can include folders or select the root.
+A later display-name edit does not move an already published file. Previous
+safe aliases are retained for media still included in the publication; normal
+replacements do not create one redirect per file. Deleted or unused history is
+not republished merely because a name remains reserved. See [media for editors](../../guides/media-for-editors/#file-names-and-folders)
+and the [media redirect policy](../redirects/#image-and-file-addresses).
+Cloud requires the matching platform release; self-hosted installations must
+update Core. Responsive variants retain generated recipe and content names.
+
+A chosen `public_path` is an absolute path such as `/products/photo.jpg`, not
+a URL. Hostnames, queries, fragments, empty segments, dot traversal and reserved
+control paths are refused; the extension must match the file type. Automatic
+names normalize unsafe characters and Unicode before claiming an address.
+Read the allocated path or returned public URL instead of predicting a suffix.
+Allocation history is managed by the server, not writable metadata.
+`media_revision_conflict` asks you to refresh/retry a concurrent change;
+`media_path_collision` asks for another name or folder when allocation cannot
+find an available one. Neither error permits overwriting another file's bytes.
 
 ## File names and types
 
@@ -323,10 +371,6 @@ import, as described above; `upload_media_batch_from_urls` marks those results
 `pending: true` and counts them in `pending`. Image preparation runs
 afterwards as its own job and is not part of this rate.
 
-## `upload_media_from_base64`
-
-Uploads an image provided as a base64-encoded string. Useful when the image is generated locally or provided as a data URI.
-
 ## `get_media_upload_status`
 
 The same pre-flight the portal media library uses for its banner: whether
@@ -382,18 +426,34 @@ before you reference it. Returns `media_id`, `cdn_url` and `filename`.
 
 ## `finalize_media`
 
-Call after a successful direct upload of an image. It sets a one-year immutable
-`Cache-Control` on the stored original. Responsive AVIF and WebP variants are
-not made here: the Organization's build engine generates them during the next
-publication. It is safe to call twice. Pass `expected_sha256` (the SHA-256
-of your source file) so a corrupted transfer is rejected with HTTP 422 instead
-of being cached. The response includes the stored `sha256` and `size_bytes`.
-Truncated SVG files are rejected.
+Call after a successful direct upload of any supported file, including a PDF.
+With connected Organization storage, this verifies the uploaded bytes, sanitizes
+SVG when needed and freezes the private original. Pass `expected_sha256` (the
+SHA-256 of the bytes you sent) to reject a mismatched transfer. The response
+includes the stored `sha256`, `size_bytes` and preparation status; sanitized SVG
+can have a different stored checksum from the source.
+
+Images queue coalesced private background preparation on the Organization's
+build engine; missing variants can also be prepared at publication. PDFs need
+no image variants. Finalize does not encode images synchronously, publish a
+public URL or build the website. Repeating it is safe. A file that cannot be
+verified is not ready to select.
+
+Legacy files without a storage receipt use the compatibility finalize path to
+verify bytes and apply immutable cache metadata, then request migration to
+Organization storage. That compatibility behavior is not a reason to skip
+finalization of a new private direct upload.
 
 ## `finalize_all_media`
 
-Applies the same cache headers to every item in the library that lacks them. Use it once on an older site. It runs synchronously, can take
-minutes on a large library and is idempotent.
+This admin-only compatibility endpoint backfills finalization of older
+runtime-storage records. For customer publishing it returns
+`variants_pending: true` and tells you to finalize each direct upload using its
+`finalize_url`; it does not verify every new private upload for you. On the
+legacy runtime-storage path it walks the library synchronously and applies
+missing cache metadata, so large libraries may take time. Neither path
+transcodes responsive variants in the portal. Use individual `finalize_media`
+for new uploads and `get_media_preparation` to observe the build engine.
 
 ## `generate_image_variants`
 
@@ -411,6 +471,26 @@ Returns what an agent needs to write alt text for one image: the image URL, a
 prompt tuned for accessibility and search, the site language and the pages that
 use the image, with the nearest heading for each use. It does not generate the
 text. Your agent writes it and saves it with `update_media`.
+
+## `delete_media_batch`
+
+From Core 0.3.45/MCP 0.45.148, delete 1–20 explicitly selected `media_ids` per
+request, with the same write permission, leases and irreversible effects as
+[`delete_media`](#delete_media). REST uses
+`DELETE /api/v1/sites/{siteId}/media` with a JSON body:
+
+```json
+{ "media_ids": ["first-media-id", "second-media-id"] }
+```
+
+Work is bounded and results are per item. HTTP 207 means at least one item is
+missing, failed or has retained copies; successful entries have still been
+deleted. Read `protection.referenced_by_media_ids` and
+`protection.public_urls_retained` when another record keeps bytes public.
+Removing that other record is a separate owner decision. Retry cleanup for
+already-deleted IDs with `remove_published_media_copies`, not by recreating
+or repeatedly deleting the missing library records. Do not use the batch
+endpoint to delete files merely because they failed an import.
 
 ## `delete_media`
 
@@ -586,9 +666,14 @@ backgrounds and file downloads, before retiring the import source.
 
 ### Published address of a file
 
-The published file name is derived from the content hash and a cleaned file
-name, so do not compute it yourself. After each successful publication of the
-`main` version, every media record carries:
+From Core 0.3.49, public originals use the [readable immutable names](#public-names-and-folders)
+allocated at first publication: root by default, optional/imported folders,
+and permanent numeric suffixes for different bytes. Older releases used a
+content-hash prefix; private storage keys and generated variants still carry
+internal identifiers. Do not compute a public address from any of those keys.
+
+After each successful publication of the `main` version, published media
+records carry:
 
 - `published_url`: the absolute URL at which that publication serves the file.
 - `published_path`: the path of `published_url` on its host. That host is the
@@ -602,13 +687,22 @@ redirect old file addresses after a migration. It changes only when a later
 publication serves the file at another address. Responsive variants are
 generated from the published file and are not listed separately.
 
-`source_aliases` lists every address the file has had: the original source URL,
-earlier storage, CDN and published addresses, and their image variants. It only
-grows. Publishing rewrites any of these addresses found in content to the file's
-current address, so content that still links to an old address keeps working
-without edits. Earlier publications' files also remain available at their old
-addresses. The order of `source_aliases` is not significant; read
-`published_url` for the current address.
+`source_aliases` records source/reference addresses: the original import URL,
+earlier storage/CDN/publication addresses and variants. It grows as addresses
+are recorded. Membership does not prove that a source URL still works, that
+an import was verified, or that every listed address is public. Publishing
+resolves recognized references to the included file's current verified address;
+check readiness before adding new references. The order is not significant.
+
+Earlier safe publication paths and aliases are retained only for media still
+needed by the publication and present in the library. Deleted or unused history
+is filtered out before media grants and build totals are frozen. A reserved
+filename prevents cache collisions; it does not keep that historical file in
+every later website output. Verify required old image and PDF URLs against
+working aliases or redirects. An independently published PDF's sharing state
+is in `file_publication`, even if a website publication clears `published_url`.
+Being omitted from a build is not removal of an existing public R2 object or
+CDN response; use the deletion/cleanup endpoints and inspect their result.
 
 ## Image recommendations
 
@@ -669,7 +763,7 @@ again; a publication meanwhile prepares the images it needs itself.
 
 ## Responsive image resolution (Core 0.2.37+)
 
-Static publishing and explicit variant generation create AVIF and WebP images
+The build engine's private preparation and static publication create AVIF and WebP images
 at the supported smaller widths and at the original image width. Exact preset
 widths are included once; small originals also receive a full-width candidate.
 Typeroll never enlarges the generated pixels. A layout wider than the original
@@ -683,9 +777,10 @@ the published derivative at the intended viewport and pixel density.
 Existing sites adopt this on their next publication. The new `v2` preparation
 recipe uses separate immutable cache addresses; the first publication prepares
 new variants once. Later unchanged builds keep reusing their verified receipts
-and files. Old published image addresses and original files are preserved. For
-independent workflows that explicitly generate variants through the API/MCP, run
-variant generation again before rebuilding; no customer CSS patch is needed.
+and files. Older safe image paths are retained for included media.
+The API/MCP `generate_image_variants` endpoint reports pending work; calling it
+again does not regenerate metadata or force synchronous encoding. Verify the
+new publication and its chosen derivatives; no customer CSS patch is needed.
 
 ### Older image variants during publication
 

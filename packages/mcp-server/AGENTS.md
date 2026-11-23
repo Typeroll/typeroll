@@ -818,16 +818,21 @@ or `page_ref_list` with `ref_content_type`. Preview with the returned Page ID.
 upload_media_from_url source_url="https://..." alt_text="Hero photo of …"
   → returns { media_id, cdn_url, finalize: {…}, finalize_error: null }
 
-# OR image lives in your memory (image-gen output):
-upload_media_inline filename="hero.png" content_type="image/png"
-                    data_base64="iVBORw0KGgo…"
-  → returns the same shape
+# OR a local/generated image lives on disk:
+create_upload_url filename="hero.png" content_type="image/png" size=<bytes>
+  → returns { media_id, upload_url, cdn_url, ... }
+# PUT the actual file bytes to upload_url with Content-Type: image/png,
+# then call finalize_media media_id=<id> expected_sha256=<source-hash>.
 
-# Both tools auto-finalize after PUT: immutable Cache-Control on the
-# original PLUS AVIF/WebP variants at 320/640/1024/1920. No manual
-# generate_image_variants call needed. The site-template renderer reads
-# the variants array off the Media doc and emits <picture> automatically
-# — you can keep the <img src="{cdn_url}"> markup simple.
+# Inspect import.state, readiness and finalize_error first. A pending import
+# is not ready to reference; a successful PUT alone is not a verified file.
+# URL and inline uploads finalize automatically when successful. A manual
+# create_upload_url + PUT requires finalize_media explicitly.
+# Finalize verifies and freezes the private original; the Organization's
+# build engine prepares AVIF/WebP variants privately and publishes referenced
+# media with the website. generate_image_variants does not transcode here.
+# Use the verified cdn_url in content; it is an authenticated editor reference,
+# not a public sharing link. Public PDFs use publish_media_file separately.
 #
 # INTEGRITY — don't lose bytes in transit. upload_media_inline carries the
 # file as a base64 string through the model/tool boundary; a payload beyond a
@@ -847,6 +852,35 @@ upload_media_inline filename="hero.png" content_type="image/png"
 read_page page_id=...
 update_page page_id=... patch={ html_content: "<...><img src='{cdn_url}' alt='…' /></...>" }
 ```
+
+### Media names, public links and recovery
+
+Core 0.3.49/MCP 0.45.150 use root filenames for new uploads without automatic
+year/month folders. Explicit folders are supported. WordPress imports keep
+upload-relative folders, omitting `wp-content/uploads` and multisite prefixes.
+Different bytes receive permanent `-2`, `-3` names at first publication; changing
+a display filename does not move an allocated public address. A shared
+Organization media host still includes an isolated Site namespace. Responsive
+variants retain generated recipe/hash suffixes.
+
+Safe old aliases are retained for media still needed by the publication;
+reserved names do not keep deleted or unused files in every later build.
+Managed WordPress imports can declare an uploads prefix, with exact exceptions
+for changed names. Borrowing an image from WordPress alone never authorizes that
+namespace. Keep stored redirects, verify historical public URLs independently
+of current HTML, and use the Pages/Bulk policy in the public guide. Ordinary
+replacements do not add one redirect per image or per variant.
+
+`read_media`/`list_media` distinguish ready, pending and failed imports. A library
+identity or old HTML reference is not evidence of a file's availability. Repair
+the source or upload verified bytes; do not hotlink a failed source. Missing
+referenced files stop publication by default. Deletion removes public copies
+and purges caches; HTTP 207 is incomplete, and protected shared bytes remain
+until their other media owners are deliberately removed. See
+https://typeroll.com/docs/tools/media/ and
+https://typeroll.com/docs/tools/redirects/#image-and-file-addresses.
+Cloud requires the matching runtime release; updating MCP alone changes no
+server behavior.
 
 ### "Stop an image over-fetching a too-large variant"
 
@@ -1364,7 +1398,7 @@ preview.
 | **Block types** | `list_block_types`, `read_block_type`, `find_pages_using_block_type`, `list_block_type_starters`, `validate_block_type`, `preview_block_type`, `create_block_type`, `update_block_type` (`renames`, `confirm_data_loss`), `delete_block_type`, `export_block_types`, `import_block_types` (`on_conflict`: skip, rename, replace). Authoring and import need write permission. |
 | **Content types** | `list_content_types`, `read_content_type`, `create_content_type`, `update_content_type`, `delete_content_type`, `change_page_content_type`, `page_completeness` |
 | **Page templates** | `list_page_templates`, `read_page_template`, `create_page_template` (a display `name` such as "Artikel" derives the ID `artikel`; or pass `id`), `update_page_template`, `delete_page_template` |
-| **Media** | `get_media_upload_status`, `list_media`, `read_media`, `create_upload_url`, `upload_media_from_url`, `upload_media_inline`, `update_media`, `delete_media` (also removes its published copies in the public bucket and purges their cache; 207 + `purge_unavailable` when Cloudflare Cache Purge is not granted), `remove_published_media_copies` (admin; copies of already-deleted media by `media_ids` or exact `urls`, `dry_run` first), `finalize_media`, `finalize_all_media`, `generate_image_variants`, `suggest_alt_text_context` |
+| **Media** | `get_import_readiness`, `get_media_upload_status`, `list_media`, `read_media`, `read_private_media_url`, `create_upload_url`, `upload_media_from_url`, `upload_media_batch_from_urls`, `upload_media_inline`, `finalize_media`, `get_media_preparation`, `prepare_media`, `publish_media_file` (PDF), `update_media`, `replace_media` (admin, all versions), `delete_media`, `delete_media_batch` (1–20 explicit IDs), `remove_published_media_copies` (admin, deleted copies; dry run first), `finalize_all_media` / `generate_image_variants` (compatibility, no portal transcoding), `suggest_alt_text_context`. HTTP 207 is incomplete; inspect protected bytes and cache-purge failures. |
 | **Redirects** | `list_redirects`, `create_redirect`, `delete_redirect`. `from_path` may be a PATTERN: a trailing `*` (with `:splat` in the target) or `:name` for one segment — one rule retires a whole family of dead URLs (`/category/*` → `/blogg/:splat`). Mid-path splats and query strings are refused, as is any rule that would hide a live page. |
 | **Migration inventory + launch gate** | `get_migration_readiness` (preflight — CALL FIRST), `list_migration_urls`, `add_migration_urls`, `update_migration_url`, `update_migration_urls`, `delete_migration_url`, `import_sitemap`, `import_gsc_performance`, `repair_migration_plain_text`, `verify_migration_urls`, `record_migration_seo_acceptance`, `get_migration_launch_report`. Sitemap indexes are recursive. GSC supports direct Search Console access or CSV and aggregates fragment variants. Plain-text repair is allowlisted and dry-run-first. A complete unfiltered URL check and reviewed SEO evidence are bound to the latest hosted deploy; the launch report fails closed when either is stale or incomplete. |
 | **Forms** | `list_forms`, `read_form`, `create_form`, `update_form`, `delete_form`, `get_form_capabilities`, `list_form_submissions`, `read_form_submission`, `delete_form_submission` (removes one submission — e.g. cleaning up a test entry; `delete_form` with `delete_submissions` is the bulk path). **Steps (form/* block trees) are the ONLY stored model**: pass `steps` for funnels, or `fields` for simple forms — the server converts a flat field list to a single static step. Place with a `core/form` block on block-mode pages or `<x-form id="…" />` in HTML mode. Both expand server-side to the same complete signed shell and initial state. `read_form` shows the form's actions (email notifications, webhooks; secrets masked) and `create_form`/`update_form` set them with `actions`, with admin permission as in the portal; `get_form_capabilities` lists the action types (including app-provided ones) and their config fields. |

@@ -61,6 +61,7 @@ export default function MediaDetail({ siteId, item, onClose, onUpdated, onDelete
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           filename: draft.filename,
+          ...(draft.public_path !== item.public_path ? { public_path: draft.public_path?.trim() || null } : {}),
           alt_text: draft.alt_text ?? '',
           title: draft.title ?? '',
           caption: draft.caption ?? '',
@@ -217,6 +218,13 @@ export default function MediaDetail({ siteId, item, onClose, onUpdated, onDelete
               className="mdetail__input"
             />
             <p className="mdetail__hint">Displayed in the library. Existing public links do not change.</p>
+          </section>
+
+          <section className="mdetail__section">
+            <label className="mdetail__label" htmlFor="md-public-path">Public path</label>
+            <input id="md-public-path" type="text" value={draft.public_path ?? ''}
+              onChange={(e) => patch('public_path', e.target.value)} placeholder="/photo.jpg" className="mdetail__input" />
+            <p className="mdetail__hint">Leave blank to use the filename in the root. Folders are optional. Changes apply when you publish; older public links keep working.</p>
           </section>
 
           <section className="mdetail__section">

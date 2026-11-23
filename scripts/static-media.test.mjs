@@ -497,3 +497,14 @@ test('boundedAll keeps order, limits concurrency and drains in-flight tasks befo
   assert.equal(running, 0, 'no task is still running when the error is thrown');
   assert.ok(!started.includes(4), 'no new task starts after a failure');
 });
+
+for (const publicPath of ['/photo.png', '/photo-2.png', '/2024/05/Höstlöv.png']) test(`materializes readable media and the old alias at ${publicPath}`, async () => withMediaFixture(async ({ publication, root, stored, entries: [entry] }) => {
+  const files = await prepareMedia(publication, root);
+  const file = files.find(file => file.path === publicPath);
+  assert.ok(file, 'the exact root or nested path is present in the static output');
+  assert.equal(sha(await fs.readFile(file.source)), entry.sha256);
+  assert.equal(sha(stored.get(entry.public_key)), entry.sha256);
+  assert.equal(sha(stored.get(entry.aliases[0].key)), entry.sha256);
+  stored.set(entry.public_key, Buffer.from('another version'));
+  await assert.rejects(() => prepareMedia(publication, root), /different bytes/);
+}, 1, false, 640, [publicPath]));

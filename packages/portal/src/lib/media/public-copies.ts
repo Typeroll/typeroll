@@ -55,6 +55,7 @@ export interface MediaIdentity {
   filename?: string;
   sha256?: string;
   public_path?: string | null;
+  public_path_history?: Media['public_path_history'];
   cdn_url?: string;
   published_url?: string | null;
   source_aliases?: string[];
@@ -143,7 +144,8 @@ export function keyForUrl(input: string, scope: CopyScope): { key: string } | { 
   const kind = scope.hosts.get(url.hostname);
   if (!kind) return { refused: scope.website_hosts.has(url.hostname) ? 'website_host' : 'foreign_host' };
   try { publicMediaPath(url.pathname); } catch { return { refused: 'unsafe_path' }; }
-  const key = kind === 'organization' ? url.pathname.slice(1) : `${scope.prefix}${url.pathname}`;
+  const pathname = decodeURIComponent(url.pathname);
+  const key = kind === 'organization' ? pathname.slice(1) : `${scope.prefix}${pathname}`;
   if (!key.startsWith(`${scope.prefix}/`) || key.length <= scope.prefix.length + 1) return { refused: 'foreign_prefix' };
   if (reservedKey(scope, key)) return { refused: 'reserved_path' };
   return { key };
@@ -160,6 +162,9 @@ function defaultBases(identity: MediaIdentity, scope: CopyScope): string[] {
   const bases: string[] = [];
   if (identity.public_path) {
     try { publicMediaPath(identity.public_path); bases.push(`${scope.prefix}${identity.public_path}`); } catch { /* unsafe paths were never published */ }
+  }
+  for (const old of identity.public_path_history ?? []) {
+    try { publicMediaPath(old.path); bases.push(`${scope.prefix}${decodeURIComponent(old.path)}`); } catch { /* unsafe paths were never published */ }
   }
   // Also with a chosen path: earlier publications may have used the default name.
   if (identity.sha256 && /^[a-f0-9]{64}$/.test(identity.sha256) && identity.filename) {
@@ -641,8 +646,8 @@ export function validMediaId(value: unknown): value is string { return typeof va
 
 /** Only the fields needed to find copies again; never content or credentials. */
 export function mediaIdentity(media: Media): MediaIdentity {
-  const { id, filename, sha256, public_path, cdn_url, published_url, source_aliases, variants, mime_type, storage, r2_key, migration_source } = media;
-  return JSON.parse(JSON.stringify({ id, filename, sha256, public_path, cdn_url, published_url, source_aliases, mime_type, storage, r2_key, migration_source,
+  const { id, filename, sha256, public_path, public_path_history, cdn_url, published_url, source_aliases, variants, mime_type, storage, r2_key, migration_source } = media;
+  return JSON.parse(JSON.stringify({ id, filename, sha256, public_path, public_path_history, cdn_url, published_url, source_aliases, mime_type, storage, r2_key, migration_source,
     variants: variants?.map(variant => ({ cdn_url: variant.cdn_url })) }));
 }
 

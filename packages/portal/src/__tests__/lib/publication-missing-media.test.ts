@@ -117,7 +117,7 @@ describe('publication media preflight', () => {
       const mapping = new Map<string, string>((result.content as any).reference_mapping?.media ?? []);
       if (deferReferences) expect(mapping.get(lost)).toBe('');
       else {
-        expect(result.content.html).toMatch(/^<img src="https:\/\/media\.example\.net\/media\/abcdefghij\/[^"]+good\.png"><img src="" srcset=" 400w">$/);
+        expect(result.content.html).toBe('<img src="https://media.example.net/media/abcdefghij/good.png"><img src="" srcset=" 400w">');
         expect(privateMediaReferences(result.content)).toEqual([]);
       }
     }

@@ -74,8 +74,11 @@ also normalizes Main when earlier publications stored only deployment metadata.
 
 Retained media manifests contain only files or aliases not already covered by the
 current output or an earlier retained snapshot. Caption edits do not duplicate
-preparation work. Removed files, older paths, changed bytes and different storage
-or domain scopes remain retained; immutable conflict checks still apply.
+preparation work. Deleted and unused files are excluded before grants and totals are created;
+a dangling saved reference to deleted media fails explicitly. Older paths and
+changed byte versions for still-used library records can remain retained in
+their original storage/domain scope. Immutable conflict checks still apply.
+This is not a second archive of every file ever published.
 
 Build-side storage groups now admit up to sixteen small files, with a 200 MiB
 reservation budget for original, comparison and verification buffers plus variant
@@ -83,7 +86,7 @@ overhead. Large/unknown files reduce the group automatically. Storage throttling
 halves the next group capacity; healthy transfers restore it. Encoding keeps its
 independent single-operation gate. This changes I/O scheduling, not image recipes.
 
-Core 0.2.8 (release candidate) adds one immutable completion receipt per media entry,
+Core 0.2.8 adds one immutable completion receipt per media entry,
 written only after its original, variants and aliases have been verified. Its key
 binds source bytes, storage and destination paths; its contents bind the encoder
 recipe and variant hashes. Editorial changes do not invalidate it. A warm
@@ -154,3 +157,44 @@ and public variants use `.v2.`; prior v1 completions cannot bypass generation.
 The original bytes and old public aliases are not overwritten or deleted.
 The first v2 build prepares the new recipe; subsequent unchanged builds retain
 the no-reencoding and no-unnecessary-download behavior.
+
+## Readable public names (Core 0.3.49)
+
+`lib/media/public-path.ts` allocates Site-scoped immutable names at first
+publication, including standalone PDF publication. New ordinary uploads use
+the filename in the media root; optional folders remain intact. WordPress
+source paths lose their uploads/multisite prefix and preserve the remainder.
+Explicit import filenames take precedence; editing a later display filename
+does not move an existing assignment. Clearing public_path selects the current
+filename again, including for an imported month folder.
+
+A media record holds its allocation and earlier path/byte identities. Persistent
+`media_public_paths` claims reserve decoded NFC-normalized paths against
+other byte identities. Allocation uses the datastore's atomic compare-and-replace
+with the claim as an effect, not an in-process lock. Different bytes/MIME types
+receive numeric suffixes. Claims survive record deletion; legacy library paths,
+known hash aliases and removal tombstones also protect earlier names. Dry runs
+predict without creating claims. Do not edit these managed identities through
+ordinary metadata PATCHes or mistake a content export for a full reservation
+backup.
+
+The frozen manifest carries safe earlier aliases and WordPress namespace
+metadata. `media-path-redirects.ts` updates only targets proven to name the same
+media and complete SHA-256, leaving authored storage unchanged. Managed WP
+imports or an authored known mapping can declare the uploads prefix. Generic
+borrowed URL imports cannot. Native prefix rules keep exact filename/status
+exceptions; page-shadowing, unknown generated routes or exhausted dynamic
+capacity fall back to known exact mappings. The existing Pages/Bulk planner
+handles exact overflow without functions on customer sites. Ordinary name or
+version changes do not generate one redirect per file. Unsafe-byte replacements
+retain their separate redirect and verification policy.
+
+Allocation does not make files public. Private object keys and responsive
+variant suffixes still carry internal identities/recipe hashes. Preparation
+receipts, public immutable-byte checks, host delivery verification and cleanup
+ownership remain mandatory. Public editor/API guidance lives at
+`packages/docs-site/src/content/docs/guides/media-for-editors.mdx`,
+`tools/media.md` and `tools/redirects.md`; keep those and bundled agent help
+in sync. Qualification includes an actual frozen static build accepted by an
+older organization supervisor, since customers do not update engines on every
+Core release.
