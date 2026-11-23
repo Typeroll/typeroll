@@ -16,7 +16,7 @@ const pdf = Buffer.from('%PDF-1.4\nSynthetic test PDF\n%%EOF');
 const hash = createHash('sha256').update(pdf).digest('hex');
 const path = `${paths.media('org', 'site')}/pdf`;
 const account = 'a'.repeat(32);
-const url = `https://media.example.com/media/abcdefghij/${hash.slice(0,16)}-report.pdf`;
+const url = 'https://media.example.com/media/abcdefghij/report.pdf';
 let copy: ReturnType<typeof vi.spyOn>;
 beforeEach(async () => {
   makeTmpFixtures(); await resetDatastore();
@@ -107,4 +107,26 @@ it('never offers an authenticated content URL as a public link',()=> {
   for(const candidate of ['https://portal.example/api/sites/site/media/id/content','javascript:alert(1)']) {
     expect(publicMediaUrl({cdn_url:candidate,published_url:candidate} as Media)).toBeNull();
   }
+});
+
+it('keeps an already verified legacy hash PDF address instead of creating a new link', async () => {
+  const key = `media/abcdefghij/${hash.slice(0,16)}-report.pdf`, legacy = `https://media.example.com/${key}`;
+  await getStore().updateDoc(path, { file_publication: { state: 'public', key, url: legacy, sha256: hash, verified_at: '2026-11-01T00:00:00Z' } });
+  expect((await publishMediaFile('org','site','pdf')).public_url).toBe(legacy);
+  expect((copy.mock.calls[0][0] as CopyObjectCommand).input.Key).toBe(key);
+});
+it('encodes a Unicode public URL while storing the actual Unicode object key', async () => {
+  await getStore().updateDoc(path, { filename: 'Höstlöv.pdf' });
+  expect((await publishMediaFile('org','site','pdf')).public_url).toBe('https://media.example.com/media/abcdefghij/H%C3%B6stl%C3%B6v.pdf');
+  expect((copy.mock.calls[0][0] as CopyObjectCommand).input.Key).toBe('media/abcdefghij/Höstlöv.pdf');
+  expect((await publishMediaFile('org','site','pdf')).public_url).toBe('https://media.example.com/media/abcdefghij/H%C3%B6stl%C3%B6v.pdf');
+});
+
+it('applies an explicitly changed PDF public path and can return to the root', async () => {
+  await publishMediaFile('org','site','pdf');
+  await getStore().updateDoc(path, { public_path: '/documents/report.pdf' });
+  expect((await publishMediaFile('org','site','pdf')).public_url).toBe('https://media.example.com/media/abcdefghij/documents/report.pdf');
+  await getStore().updateDoc(path, { public_path: null });
+  expect((await publishMediaFile('org','site','pdf')).public_url).toBe(url);
+  expect((await getStore().getDoc<Media>(path))?.source_aliases).toContain('https://media.example.com/media/abcdefghij/documents/report.pdf');
 });

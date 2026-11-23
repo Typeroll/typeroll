@@ -32,6 +32,17 @@ Do not delete configured redirects merely because current HTML no longer uses
 them. Core 0.3.48 compacts equivalent per-file rules in the frozen publication;
 stored rules stay intact. See https://typeroll.com/docs/tools/redirects/.
 
+From Core 0.3.49, new uploads default to the media root (`photo.jpg`), without
+automatic year/month folders. Explicit folders and WordPress upload-relative
+folders are preserved; `wp-content/uploads` and multisite prefixes are removed
+from new addresses. Different bytes receive permanent numeric names (`photo-2.jpg`);
+old safe public addresses stay available without a redirect per replacement.
+Managed WordPress imports declare their uploads namespace so publication can
+use one prefix with exact collision exceptions. A borrowed image alone does
+not declare a namespace. Check the returned public paths and the complete old
+URL inventory; Cloud requires the corresponding platform release.
+
+
 ### 1. Get an image
 
 Options, in order of preference:

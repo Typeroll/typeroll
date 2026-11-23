@@ -142,6 +142,24 @@ shown, instead of leaving a broken item in the library. A concurrent change
 (`media_revision_conflict`) or a rate limit is retried; other errors, such as
 an expired sign-in, keep the uploaded file and show the reason.
 
+## Public names and folders
+
+From **Core 0.3.49** (MCP **0.45.150**), new uploads use the root filename with
+no automatic year/month folders. `public_path` accepts an optional folder such
+as `/products/photo.jpg`; `null` clears the choice. The first publication
+reserves the final name. Different bytes with the same name receive `-2`, `-3`,
+and so on, including after deletion; identical files may share a name.
+
+WordPress imports retain upload-relative folders such as `2024/05/photo.jpg`
+and omit the `wp-content/uploads` and multisite prefixes from new addresses.
+An explicitly chosen import filename can include folders or select the root.
+A later display-name edit does not move an already published file. Previous
+safe public URLs remain available; normal replacements do not create one
+redirect per file. See [media for editors](../../guides/media-for-editors/#file-names-and-folders)
+and the [media redirect policy](../redirects/#image-and-file-addresses).
+Cloud requires the matching platform release; self-hosted installations must
+update Core. Responsive variants retain generated recipe and content names.
+
 ## File names and types
 
 When media is published on the website host, the static host chooses each file's

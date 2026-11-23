@@ -510,10 +510,28 @@ same destination and status, while retaining the stored rules. See the
 [image and file redirect policy](/docs/tools/redirects/#image-and-file-addresses)
 for safety conditions and shared Bulk quotas.
 
-A media item's `public_path` can preserve a legacy path such as
-`/wp-content/uploads/2024/photo.jpg`. The path must end in an extension that
-matches the file's type. Public paths are immutable: a different file
-must use a new path. This protects older deployments and cached links.
+From **Core 0.3.49**, new files use readable filenames directly in the site's
+media root, with no automatic year/month folders. Explicit folders remain
+supported: `public_path: "/products/photo.jpg"`. Managed WordPress imports keep
+the path relative to the uploads directory, for example `/2024/05/photo.jpg`,
+without `wp-content/uploads` or a multisite site id. Cloud needs the matching
+platform release; self-hosted installations need to update Core.
+
+The first publication permanently reserves a name and byte identity. Different
+bytes with the same name receive `-2`, `-3`, and so on; deleted names are not
+reused for new bytes. Identical files may share an address. A display-name edit
+does not move an already published file. Public paths must have a file extension
+matching the verified type. Old safe hash-based addresses remain available as
+static copies, rather than accumulating one redirect for every replacement.
+Responsive variants keep their generated recipe and content identifiers.
+
+Managed WordPress imports declare their old uploads namespace. The publisher
+can map that prefix to the new media host while retaining the remaining folders
+and filename; collisions and changed names keep exact exceptions. Merely
+borrowing an image from a WordPress URL does not declare that namespace. Existing
+explicit routing decisions are retained. See the
+[image and file redirect policy](/docs/tools/redirects/#image-and-file-addresses).
+
 Organization media URLs and previously published aliases remain available after
 a site changes its preferred host. Builds use the new preferred addresses;
 images are not moved into GitHub.

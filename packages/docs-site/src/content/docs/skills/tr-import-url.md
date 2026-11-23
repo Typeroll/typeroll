@@ -160,6 +160,17 @@ for private and never-public addresses. Existing configured rules stay intact;
 Core 0.3.48 compacts equivalent per-file lines only in frozen publication output.
 See https://typeroll.com/docs/tools/redirects/ for the policy and Bulk quotas.
 
+From Core 0.3.49, new uploads default to the media root (`photo.jpg`), without
+automatic year/month folders. Explicit folders and WordPress upload-relative
+folders are preserved; `wp-content/uploads` and multisite prefixes are removed
+from new addresses. Different bytes receive permanent numeric names (`photo-2.jpg`);
+old safe public addresses stay available without a redirect per replacement.
+Managed WordPress imports declare their uploads namespace so publication can
+use one prefix with exact collision exceptions. A borrowed image alone does
+not declare a namespace. Check the returned public paths and the complete old
+URL inventory; Cloud requires the corresponding platform release.
+
+
 If the source URLs differ from the target slugs, create redirects:
 
 ```

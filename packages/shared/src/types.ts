@@ -974,6 +974,12 @@ export interface Media {
   /** Width of the prepared original (from its preparation receipt), for images stored without `width`. */
   prepared_width?: number;
   public_path?: string;
+  /** Immutable public name allocation; the hash stays internal to verification. */
+  public_path_allocation?: { base_path: string; path: string; sha256: string };
+  /** Earlier assigned names, retained for copy ownership and immutable URL protection. */
+  public_path_history?: Array<{ path: string; sha256: string }>;
+  /** Uploads namespace declared by the managed WordPress migration. */
+  wordpress_upload_prefix?: string;
   /**
    * Every address this file has had: original source URLs, earlier storage and
    * published addresses and their image variants. Grows only. Publication

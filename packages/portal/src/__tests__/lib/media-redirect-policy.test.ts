@@ -1,6 +1,7 @@
 import { expect, it } from 'vitest';
 import { expandRedirectsForTrailingSlashPolicy, pagesRedirectCapacity, pagesRedirectsFile, type Redirect } from '@typeroll/shared';
 import { compactCoveredMediaRedirects, freezeMediaRedirects } from '../../lib/publishing/media-redirect-policy';
+import { mediaPathRedirects } from '../../lib/publishing/media-path-redirects';
 import { authoredMediaContent } from '../../lib/publishing/media-manifest';
 import fs from 'node:fs/promises';
 import os from 'node:os';
@@ -127,10 +128,13 @@ it('builds the compact frozen plan as a static artifact accepted by the unmodifi
     const { describeStaticOutput } = await import(/* @vite-ignore */ pathToFileURL(path.join(temp, oldFiles[0])).href);
     const rules = Array.from({ length: 2500 }, (_, i) => rule(`/media/photo-${i}.jpg`, `https://images.example.com/photo-${i}.jpg`));
     rules.push(prefix, rule('/media/renamed.jpg', 'https://images.example.com/hash-renamed.jpg'), rule('/media/temporary.jpg', 'https://images.example.com/temporary.jpg', 302));
-    const plan = freezeMediaRedirects(rules);
+    const image = { id: 'imported', sha256: 'b'.repeat(64), cdn_url: 'https://images.example.com/2024/05/photo-2.jpg', aliases: [],
+      wordpress_upload: { prefix: '/wp-content/uploads', source_path: '/wp-content/uploads/2024/05/photo.jpg', declared: true } };
+    const planned = mediaPathRedirects({ site_url: 'https://site.example.com', media_manifest: { media_host: 'images.example.com', media_path_prefix: '', entries: [image] } }, rules);
+    const plan = freezeMediaRedirects(planned.redirects);
     const frozen = { ...projectStaticPublication({ site: { name: 'Synthetic migration' },
       settings: { site_name: 'Synthetic migration', fonts: { heading: 'system-ui', body: 'system-ui' } },
-      pages: [{ id: 'home', slug: '', title: 'Home', status: 'published', content_mode: 'html', html_content: '<h1>Home</h1>' }],
+      pages: [{ id: 'home', slug: '', title: 'Home', status: 'published', content_mode: 'html', html_content: '<h1>Home</h1><img src="https://images.example.com/photo.jpg"><img src="https://images.example.com/2024/05/photo-2.jpg">' }],
       partials: [], forms: [], extensions: [], contentTypes: [], blockTypes: [], pageTemplates: [], menus: [], snippets: [], media: [],
       redirects: plan.redirects,
     }, { siteUrl: 'https://site.example.com', coreCommit: 'a'.repeat(40), publishedAt: '2026-11-23T00:00:00Z' }), media_redirect_omissions: plan.omitted };
@@ -143,6 +147,11 @@ it('builds the compact frozen plan as a static artifact accepted by the unmodifi
     expect(text).toContain('/media/temporary.jpg https://images.example.com/temporary.jpg 302');
     expect(text).not.toContain('/media/photo-');
     expect(text).not.toContain('typeroll-bulk-redirect');
+    expect(text).toContain('/wp-content/uploads/* https://images.example.com/:splat 301');
+    expect(text).toContain('/wp-content/uploads/2024/05/photo.jpg https://images.example.com/2024/05/photo-2.jpg 301');
+    const html = await fs.readFile(path.join(harness.destination, 'dist/index.html'), 'utf8');
+    expect(html).toContain('https://images.example.com/photo.jpg');
+    expect(html).toContain('https://images.example.com/2024/05/photo-2.jpg');
     expect(Object.keys(output.files).some(file => file === '_worker.js' || file.startsWith('functions/'))).toBe(false);
   } finally { await harness?.cleanup(); await fs.rm(temp, { recursive: true, force: true }); }
 }, 90_000);

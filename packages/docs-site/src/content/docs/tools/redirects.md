@@ -198,7 +198,7 @@ Use this order when planning a media migration:
 2. Use one prefix rule when the whole namespace has an established mapping and
    the remaining path and filename stay unchanged. For example,
    `/wp-content/uploads/*` can point to
-   `https://images.example.com/wp-content/uploads/:splat` when those files really
+   `https://images.example.com/:splat` when those files really
    exist there. Do not infer a wildcard from a partial list of imported images,
    or capture live pages or exceptions with it.
 3. Keep individual mappings where destinations or HTTP statuses differ, such
@@ -219,6 +219,24 @@ routes keep exact rules until their complete rendered route inventory is known.
 The stored rules remain unchanged and the
 publisher never invents a broader wildcard for this optimization. Older build
 engines receive the already compacted redirect array in the frozen publication.
+
+From **Core 0.3.49**, filenames are readable and immutable: new uploads use the
+media root without automatic date folders; explicit and imported folders stay
+intact. Managed WordPress imports declare the uploads namespace and strip its
+`wp-content/uploads` (or multisite) prefix from new media paths. This permits
+one uploads-prefix redirect, with exact exceptions for numbered collisions,
+sanitized names and owner overrides. A borrowed WordPress image alone never
+authorizes a site-wide prefix. A namespace that could hide a live page, has
+unknown generated routes, or exceeds the dynamic budget uses known exact
+mappings instead. Stored rules remain unchanged. Cloud needs the corresponding
+platform release; self-hosted installations need to update Core.
+
+Safe old hash-based addresses are kept as static copies. Replacing an ordinary
+image reserves a new numbered filename and keeps the previous safe file; it
+does not automatically add a redirect for every replaced file or generated
+variant. The separate unsafe-media replacement rules still apply. A prefix
+cannot discover every filename that ever existed: migration verification must
+still check the agreed old URL inventory and resolve missing files explicitly.
 
 The existing `/media/*` move to a separate media host already uses one prefix
 rule. See [website and media hosts](../../guides/customer-publishing/#website-and-media-hosts).

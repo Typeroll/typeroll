@@ -227,7 +227,7 @@ export const mediaTools: ToolDef[] = [
       media_id: z.string(),
       alt_text: z.string().optional(),
       filename: z.string().optional(),
-      public_path: z.string().nullable().optional().describe('Optional stable path such as /wp-content/uploads/2023/photo.jpg. Applied at the next build; existing public image URLs stay available.'),
+      public_path: z.string().nullable().optional().describe('Optional path such as /products/photo.jpg. New uploads default to the root filename without date folders. Publication numbers names used by different bytes; old safe public URLs stay available.'),
     },
     handler: withErrorBoundary(async (args, { client, siteId }) => {
       const { media_id, ...body } = args;

@@ -7,6 +7,7 @@ import { storageClient } from '../publishing/media-storage';
 import { CopyObjectCommand } from '../net/s3';
 import { siteMediaPrefix } from '../media-keys';
 import { safeFetch } from '../net/safe-fetch';
+import { allocatePublicMediaPaths } from './public-path';
 
 /** Serialize explicit file publication and removal, including separate Worker instances. */
 export async function withMediaFileOperation<T>(orgId: string, siteId: string, mediaId: string, operation: () => Promise<T>): Promise<T> {
@@ -30,12 +31,13 @@ export async function withMediaFileOperation<T>(orgId: string, siteId: string, m
 export async function publishMediaFile(orgId: string, siteId: string, mediaId: string) {
   return withMediaFileOperation(orgId, siteId, mediaId, async () => {
     const store = getStore(), path = `${paths.media(orgId, siteId)}/${mediaId}`;
-    const media = (await store.getDoc<Media>(path))!;
+    let media = (await store.getDoc<Media>(path))!;
     if (media.mime_type !== 'application/pdf') throw new ConnectionError('Individual file publication currently supports PDFs. Images and videos are published with the website.', 415, 'media_file_type_unsupported');
     if (media.storage?.provider !== 'organization_r2' || media.storage.state !== 'ready' || !/^[a-f0-9]{64}$/.test(media.sha256 ?? '') || !media.size_bytes || media.size_bytes > 25 * 1024 * 1024) {
       throw new ConnectionError('Finish uploading this PDF to the organization’s storage before publishing it.', 409, 'media_file_not_ready');
     }
     if (media.replacement_media_id) throw new ConnectionError('Publish the replacement file instead.', 409, 'media_replaced');
+    const storage = media.storage;
     const [domains, connection, prefix] = await Promise.all([getOrganizationDomains(orgId), getConnection(orgId, 'cloudflare'), siteMediaPrefix(orgId, siteId)]);
     if (!domains.media_host) throw new ConnectionError('Connect an organization media domain in Publishing → Domains before publishing a PDF.', 409, 'media_domain_required');
     const host = publicationHostname(domains.media_host), cf = connection.cloudflare;
@@ -44,9 +46,15 @@ export async function publishMediaFile(orgId: string, siteId: string, mediaId: s
     }
     // Keep the first address across display-name edits and website publications.
     const previous = media.file_publication;
-    const key = previous && previous.sha256 === media.sha256 && previous.key.startsWith(`${prefix}/`) && previous.url === `https://${host}/${previous.key}`
-      ? previous.key : `${prefix}/${media.sha256!.slice(0, 16)}-${media.filename.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
-    const url = `https://${host}/${key}`;
+    const chosenPathChanged = media.public_path_allocation ? media.public_path !== media.public_path_allocation.path
+      : media.public_path != null && previous?.key !== `${prefix}${media.public_path}`;
+    const reusable = !chosenPathChanged && previous && previous.sha256 === media.sha256 && previous.key.startsWith(`${prefix}/`) && previous.url === new URL(`https://${host}/${previous.key}`).href;
+    if (!reusable) {
+      media = (await allocatePublicMediaPaths(orgId, siteId, [media], await store.listDocs<Media>(paths.media(orgId, siteId)))).get(mediaId)!;
+    }
+    const key = reusable
+      ? previous.key : `${prefix}${media.public_path}`;
+    const url = new URL(`https://${host}/${key}`).href;
     await markOrganizationMediaHostUsed(orgId, domains);
     // Record the explicit publication intent BEFORE copying: removal can always find it,
     // including after a process interruption. A pending copy is never labelled verified.
@@ -55,10 +63,10 @@ export async function publishMediaFile(orgId: string, siteId: string, mediaId: s
       current => current.file_operation?.lease === media.file_operation?.lease && current.sha256 === media.sha256 && current.storage?.key === media.storage!.key && JSON.stringify(current.source_aliases) === JSON.stringify(media.source_aliases),
       { file_publication: publication, source_aliases: [...new Set([...(media.source_aliases ?? []), url])] });
     if (!intent) throw new ConnectionError('Media changed while preparing its public link. Retry Publish PDF.', 409, 'media_revision_conflict');
-    const r2 = await storageClient(orgId, media.storage);
+    const r2 = await storageClient(orgId, storage);
     try {
       await r2.send(new CopyObjectCommand({ Bucket: cf.public_bucket, Key: key,
-        CopySource: `${media.storage.bucket}/${media.storage.key}`, MetadataDirective: 'REPLACE',
+        CopySource: `${storage.bucket}/${storage.key}`, MetadataDirective: 'REPLACE',
         ContentType: 'application/pdf', ContentDisposition: 'inline', CacheControl: 'public, max-age=31536000, immutable',
         Metadata: { sha256: media.sha256! } }), { abortSignal: AbortSignal.timeout(30_000) });
     } catch {

@@ -2106,7 +2106,7 @@ Patch a media item's alt text, filename or public path. A rename must be correct
 | `media_id` | path | string | yes |  |
 | `alt_text` | body | string | no |  |
 | `filename` | body | string | no |  |
-| `public_path` | body | string \| null | no | Optional stable path such as /wp-content/uploads/2023/photo.jpg. Applied at the next build; existing public image URLs stay available. |
+| `public_path` | body | string \| null | no | Optional path such as /products/photo.jpg. New uploads default to the root filename without date folders. Publication numbers names used by different bytes; old safe public URLs stay available. |
 
 ### `generate_image_variants`
 

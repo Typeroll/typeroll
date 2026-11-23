@@ -36,6 +36,9 @@ for (const width of [320, 1280]) test(`unfinished media stays inspectable withou
     await expect(dialog.getByText('Publish a page that uses this file to make it public.')).toHaveCount(0);
     await expect(dialog.getByRole('link', { name: 'Open private preview' })).toHaveCount(0);
     await expect(dialog.locator('img')).toHaveCount(0);
+    await expect(dialog.getByLabel('Public path', { exact: true })).toHaveValue('');
+    await expect(dialog.getByPlaceholder('/photo.jpg')).toBeVisible();
+    await expect(dialog.getByText('Leave blank to use the filename in the root.', { exact: false })).toBeVisible();
     expect(await dialog.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     const bounds = (await dialog.boundingBox())!;
@@ -54,5 +57,20 @@ for (const width of [320, 1280]) test(`unfinished media stays inspectable withou
     });
     expect(direct.status()).toBe(409);
     expect(await direct.json()).toMatchObject({ code: 'media_not_ready', details: { media_id: ids[2], state: 'failed' } });
+    await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+    await page.getByRole('button', { name: `View details for ${ids[0]}.jpg` }).click();
+    const ready = page.getByRole('dialog', { name: `Media: ${ids[0]}.jpg` });
+    await ready.getByLabel('Public path', { exact: true }).fill('/products/photo.jpg');
+    await ready.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(ready.getByText('Saved', { exact: true })).toBeVisible();
+    expect((await e2eStore.read(`${DEFAULT_SITE}/media/${ids[0]}`)).public_path).toBe('/products/photo.jpg');
+    await ready.getByRole('button', { name: 'Close', exact: true }).click();
+    await page.getByRole('button', { name: `View details for ${ids[0]}.jpg` }).click();
+    await expect(ready.getByLabel('Public path', { exact: true })).toHaveValue('/products/photo.jpg');
+    await ready.getByLabel('Public path', { exact: true }).fill('');
+    await ready.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(ready.getByText('Saved', { exact: true })).toBeVisible();
+    expect((await e2eStore.read(`${DEFAULT_SITE}/media/${ids[0]}`)).public_path).toBeNull();
+
   } finally { await e2eStore.delete(...media.map(([path]) => path)); }
 });

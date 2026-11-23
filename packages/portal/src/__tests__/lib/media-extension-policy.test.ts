@@ -186,6 +186,14 @@ describe('routes that set media names', () => {
     expect((await getStore().getDoc<Media>(mediaPath(chosen.mediaId)))?.filename).toBe('x.html.png');
     const imported = await transfer.importUrl('https://source.example.com/render.php', { contentType: 'image/png' });
     expect((await getStore().getDoc<Media>(mediaPath(imported.mediaId)))?.filename).toBe('render.php.png');
+    const chosenFolder = await transfer.importUrl('https://source.example.com/wp-content/uploads/2024/05/original.png', { filename: 'products/custom.png', contentType: 'image/png' });
+    expect(await getStore().getDoc<Media>(mediaPath(chosenFolder.mediaId))).toMatchObject({ filename: 'products/custom.png', public_path: '/products/custom.png' });
+    const rootChoice = await transfer.importUrl('https://source.example.com/wp-content/uploads/2024/05/another.png', { filename: 'chosen.png', contentType: 'image/png' });
+    expect((await getStore().getDoc<Media>(mediaPath(rootChoice.mediaId)))?.public_path).toBe('/chosen.png');
+    const managed = await transfer.ensureUrl('https://source.example.com/wp-content/uploads/2024/05/managed.png');
+    expect((await getStore().getDoc<Media>(mediaPath(managed.mediaId)))?.wordpress_upload_prefix).toBe('/wp-content/uploads');
+    expect((await getStore().getDoc<Media>(mediaPath(rootChoice.mediaId)))?.wordpress_upload_prefix).toBeUndefined();
+
   });
 
   it('createMediaUpload stores a matching name for every caller', async () => {
@@ -233,8 +241,8 @@ describe('publication media manifest', () => {
     const result = await publicationMediaManifest('org', 'site', { html: `<img src="${byPath}"><img src="${byName}"><a href="${unknown}">x</a>` }, 'site.demos.example.com');
     const paths_ = result.manifest!.entries.map(entry => entry.public_path);
     expect(paths_).toContain('/media/abcdefghij/evil.html.png');
-    expect(paths_.find(path => path.includes('evil.html-') || path.endsWith('-evil.html.png'))).toMatch(/-evil\.html\.png$/);
-    expect(result.manifest!.entries.find(entry => entry.id === 'c')).toMatchObject({ mime_type: 'application/octet-stream', public_path: expect.stringMatching(/-run\.js\.bin$/) });
+    expect(paths_).toContain('/media/abcdefghij/evil.html-2.png');
+    expect(result.manifest!.entries.find(entry => entry.id === 'c')).toMatchObject({ mime_type: 'application/octet-stream', public_path: '/media/abcdefghij/run.js.bin' });
     expect(result.manifest!.entries.every(entry => !/\.(?:html|js)$/.test(entry.public_path))).toBe(true);
     expect(result.content.html).not.toContain('evil.html"');
     expect(result.warnings).toHaveLength(3);
@@ -251,11 +259,15 @@ describe('publication media manifest', () => {
     expect(result.warnings).toEqual([expect.stringContaining('second (logo.png) is the same file as first')]);
   });
 
-  it('still refuses two different files on one public path', async () => {
+  it('gives different files distinct immutable names instead of overwriting a public path', async () => {
     const a = await seed('a', { filename: 'a.png', mime_type: 'image/png', public_path: '/same.png' }, Buffer.from('one'));
     const b = await seed('b', { filename: 'b.png', mime_type: 'image/png', public_path: '/same.png' }, Buffer.from('two'));
-    await expect(publicationMediaManifest('org', 'site', { html: `<img src="${a}"><img src="${b}">` }, 'site.demos.example.com'))
-      .rejects.toMatchObject({ code: 'media_path_collision', message: expect.stringContaining('a and b are different files') });
+    const result = await publicationMediaManifest('org', 'site', { html: `<img src="${a}"><img src="${b}">` }, 'site.demos.example.com');
+    expect(result.manifest!.entries.map(entry => [entry.public_path, entry.sha256])).toEqual([
+      ['/media/abcdefghij/same.png', sha(Buffer.from('one'))],
+      ['/media/abcdefghij/same-2.png', sha(Buffer.from('two'))],
+    ]);
+    expect(result.content.html).toBe('<img src="https://media.example.net/media/abcdefghij/same.png"><img src="https://media.example.net/media/abcdefghij/same-2.png">');
   });
 
   it('keeps passive names unchanged and infers a missing type from them', () => {
@@ -283,7 +295,7 @@ describe('publication media manifest', () => {
     expect(result.manifest!.entries.map(entry => entry.id)).toEqual(['photo']);
     expect(result.sourceMedia.map(item => item.id)).toEqual(['photo']);
     // No private address and no bytes of the excluded file reach the publication.
-    expect(result.content.html).toMatch(/^<img src=""><img src="https:\/\/media\.example\.net\/media\/abcdefghij\/[^"]+photo\.png">$/);
+    expect(result.content.html).toBe('<img src=""><img src="https://media.example.net/media/abcdefghij/photo.png">');
     expect(result.warnings).toEqual([expect.stringMatching(/^Media bad \(bad\.svg\) was not published: the SVG could not be made safe/)]);
     expect((await getStore().getDoc<SvgMedia>(mediaPath('bad')))?.svg_sanitized).toBeUndefined();
   });
@@ -308,6 +320,19 @@ describe('publication media manifest', () => {
       .rejects.toMatchObject({ status: 409, code: 'media_svg_unsanitized', message: expect.stringContaining('Publish the site once before changing domains') });
     await expect(publicationMediaManifest('org', 'site', first.content, 'site.demos.example.com', { site_url: 'https://site.demos.example.com', media_manifest: first.manifest }))
       .resolves.toMatchObject({ manifest: { entries: [expect.objectContaining({ id: 'svg', svg_sanitized: true })] } });
+  });
+
+  it('keeps old hash and renamed paths as byte-identical aliases through a domain-only publication', async () => {
+    const url = await seed('photo', { filename: 'photo.png', mime_type: 'image/png' });
+    const digest = sha(Buffer.from('photo')), legacy = `https://media.example.net/media/abcdefghij/${digest.slice(0,16)}-photo.png`;
+    await getStore().updateDoc(mediaPath('photo'), { source_aliases: [legacy] });
+    const first = await publicationMediaManifest('org', 'site', { html: `<img src="${url}">` }, 'site.demos.example.com');
+    expect(first.manifest!.entries[0]).toMatchObject({ public_path: '/media/abcdefghij/photo.png', legacy_urls: [legacy], aliases: expect.arrayContaining([{ url: legacy, key: `media/abcdefghij/${digest.slice(0,16)}-photo.png` }]) });
+    await getStore().updateDoc(mediaPath('photo'), { public_path: '/products/photo.png' });
+    const renamed = await publicationMediaManifest('org', 'site', { html: `<img src="${url}">` }, 'site.demos.example.com');
+    expect(renamed.manifest!.entries[0].aliases).toContainEqual({ url: 'https://media.example.net/media/abcdefghij/photo.png', key: 'media/abcdefghij/photo.png' });
+    const rebuilt = await publicationMediaManifest('org', 'site', renamed.content, 'site.demos.example.com', { site_url: 'https://site.demos.example.com', media_manifest: renamed.manifest });
+    expect(rebuilt.manifest!.entries[0].aliases).toEqual(expect.arrayContaining(renamed.manifest!.entries[0].aliases));
   });
 
   it('does not serve unsafe entries of older manifests again', () => {

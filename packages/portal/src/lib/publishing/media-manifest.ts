@@ -10,6 +10,7 @@ import { siteMediaPrefix } from '../media-keys';
 import { allowedMediaExtensions, isScriptableMediaType, mediaNameMatchesType, mediaTypeEssence, passiveTypeForName, SVG_MEDIA_TYPE } from '../media/file-types';
 import type { ImportingMedia } from '../media/import-retry';
 import { privateMediaReferences } from '../media/readiness';
+import { allocatePublicMediaPaths, wordpressMediaPath } from '../media/public-path';
 export { privateMediaReferences } from '../media/readiness';
 
 type MarkedMedia = Media & { svg_sanitized?: { sha256?: string } };
@@ -209,13 +210,18 @@ export async function publicationMediaManifest<T extends Record<string, any>>(or
     media.splice(media.indexOf(item), 1);
   }
   const shareSources = shareImageSourceUrls(content);
+  const repairedNames = new Set(media.filter(item => publishableMediaPath(item.public_path || `/${item.filename}`, item.mime_type).renamed).map(item => item.id));
+  if (!fromPrevious) {
+    const names = await allocatePublicMediaPaths(orgId, siteId, media, all, { dryRun: options.dryRun });
+    media.splice(0, media.length, ...media.map(item => names.get(item.id)!));
+  }
   const byPath = new Map<string, any>();
   const entries = media.map(item => {
     if (!item.storage) throw new ConnectionError('Media storage changed during publishing. Deploy again.', 409, 'media_migration_pending');
-    const chosen = item.public_path ? publicMediaPath(item.public_path) : `/${item.sha256!.slice(0, 16)}-${item.filename.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+    const chosen = publicMediaPath(item.public_path!);
     const svg = isScriptableMediaType(item.mime_type);
     const safe = publishableMediaPath(chosen, svg ? SVG_MEDIA_TYPE : item.mime_type);
-    if (safe.renamed) warnings.push(`Media ${item.id} (${item.filename}) is published at ${safe.path} because its name did not match its type ${mediaTypeEssence(item.mime_type) || 'unknown'}.`);
+    if (safe.renamed || repairedNames.has(item.id)) warnings.push(`Media ${item.id} (${item.filename}) is published at ${safe.path} because its name did not match its type ${mediaTypeEssence(item.mime_type) || 'unknown'}.`);
     const relative = safe.path;
     const publicPath = publicMediaPath(`${publicPrefix}${relative}`);
     const taken = byPath.get(publicPath);
@@ -228,9 +234,11 @@ export async function publicationMediaManifest<T extends Record<string, any>>(or
     }
     if (taken || pathsSeen.has(publicPath)) throw new ConnectionError(`Media ${taken?.id ?? 'files'} and ${item.id} are different files with the same public path ${publicPath}. Choose distinct paths before publishing.`, 409, 'media_path_collision');
     pathsSeen.add(publicPath);
-    const url = `https://${host}${publicPath}`;
+    const url = new URL(`https://${host}${publicPath}`).href;
     const publicKey = `${prefix}${sharedHost ? relative : publicPath}`;
-    const aliases = organizationHost ? [{ url: `https://${organizationHost}/${prefix}${relative}`, key: `${prefix}${relative}` }] : [];
+    const aliases: Array<{ url: string; key: string }> = fromPrevious ? [...((item as any).aliases ?? [])] : [];
+    const organizationUrl = organizationHost && new URL(`https://${organizationHost}/${prefix}${relative}`).href;
+    if (organizationUrl && !aliases.some(alias => alias.url === organizationUrl)) aliases.push({ url: organizationUrl, key: `${prefix}${relative}` });
     for (const retained of [...domains.media_aliases, ...(domains.active ? [domains.active] : [])]) {
       const retainedHost = retained.media_host || organizationHost;
       if (!retainedHost || retainedHost === retained.website_host) continue;
@@ -239,6 +247,27 @@ export async function publicationMediaManifest<T extends Record<string, any>>(or
       const retainedUrl = `https://${retainedHost}${retainedPath}`;
       if (!aliases.some(alias => alias.url === retainedUrl)) aliases.push({ url: retainedUrl, key });
     }
+    // Renaming safe bytes is not a redirect: keep their previously public
+    // hash addresses and assigned names as verified static copies.
+    const oldPaths = new Set((item.public_path_history ?? []).filter(old => old.sha256 === item.sha256).map(old => old.path));
+    const legacyUrls: string[] = [];
+    const knownHosts = new Set([host, organizationHost, websiteHost, ...domains.media_aliases.flatMap(old => [old.media_host, old.website_host]), domains.active?.media_host].filter(Boolean));
+    for (const address of [item.published_url, ...item.source_aliases ?? []]) {
+      try {
+        const parsed = new URL(address!);
+        if (parsed.username || parsed.password || parsed.search || parsed.hash || !knownHosts.has(parsed.hostname)) continue;
+        const legacy = /\/([a-f0-9]{16}-[^/]+)$/.exec(decodeURIComponent(parsed.pathname));
+        if (legacy?.[1].startsWith(`${item.sha256!.slice(0, 16)}-`) && mediaNameMatchesType(legacy[1], item.mime_type)) {
+          oldPaths.add(`/${legacy[1]}`); legacyUrls.push(parsed.href);
+        }
+      } catch { /* Private/editor and foreign source addresses are not public aliases. */ }
+    }
+    for (const oldPath of oldPaths) {
+      publicMediaPath(oldPath);
+      if (oldPath === relative) continue;
+      const url = new URL(`https://${host}${publicPrefix}${oldPath}`).href, key = `${prefix}${sharedHost ? oldPath : `${publicPrefix}${oldPath}`}`;
+      if (!aliases.some(alias => alias.url === url)) aliases.push({ url, key });
+    }
     replacements.set(item.cdn_url, url);
     for (const alias of item.source_aliases ?? []) replacements.set(alias, url);
     // Existing responsive URLs remain valid aliases; the current build regenerates its own variant list.
@@ -246,6 +275,10 @@ export async function publicationMediaManifest<T extends Record<string, any>>(or
     const entry: Record<string, any> = { id: item.id, filename: item.filename, mime_type: safe.mime_type, alt_text: item.alt_text, title: item.title, caption: item.caption,
       cdn_url: url, variants: [], source_key: item.storage.key, sha256: item.sha256, size_bytes: item.size_bytes,
       public_key: publicKey, public_path: publicPath, aliases, ...(svg ? { svg_sanitized: true } : {}),
+      ...(legacyUrls.length ? { legacy_urls: legacyUrls } : {}),
+      ...((wordpressMediaPath((item as ImportingMedia).source_url) ?? (item as any).wordpress_upload)
+        ? { wordpress_upload: { ...(wordpressMediaPath((item as ImportingMedia).source_url) ?? (item as any).wordpress_upload),
+          ...(item.wordpress_upload_prefix ? { declared: true } : {}) } } : {}),
       // The build's media stage sees no pages, so it learns here which files a page may share.
       ...(references(item).some(url => shareSources.has(url)) ? { share_source: true } : {}) };
     byPath.set(publicPath, entry);
@@ -277,8 +310,8 @@ export async function publicationMediaManifest<T extends Record<string, any>>(or
 export function authoredMediaContent(publication: Record<string, any>): Record<string, any> {
   const { media: _media, media_manifest: _manifest, retained_media_manifests: _retained,
     source_impact_snapshot: _impact, reference_mapping: _mapping, media_replacement_redirects: _replacement,
-    media_host_redirects: _host, media_redirect_omissions: _omitted, ...content } = publication;
-  const generated = new Set([...(_replacement ?? []), ...(_host ?? [])].map(rule => rule.id));
+    media_host_redirects: _host, media_path_redirects: _paths, media_redirect_omissions: _omitted, ...content } = publication;
+  const generated = new Set([...(_replacement ?? []), ...(_host ?? []), ...(_paths ?? [])].map(rule => rule.id));
   return { ...content, redirects: [...(content.redirects ?? []), ...(_omitted ?? [])].filter((rule: any) => !generated.has(rule.id)) };
 }
 
