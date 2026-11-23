@@ -237,6 +237,17 @@ c. Migrate referenced images with `upload_media_from_url`. The customer's
    media reference only after verification. Stop and report a failed required
    transfer; do not silently hotlink the WordPress source.
 
+   Preserve the old public image addresses separately from rewriting the new
+   HTML. Prefer a safe existing address or `public_path` when appropriate;
+   changing the host still needs compatible routing. Use a prefix redirect only
+   for a complete, established namespace whose remaining paths and filenames are
+   unchanged. Use exact mappings for different filenames or statuses, with Bulk
+   overflow when needed. Do not generate a redirect for each private or
+   never-public variant, infer a wildcard from a partial image inventory, or
+   delete existing rules after rewriting HTML. Core 0.3.48 omits redundant
+   per-file lines covered by an equivalent existing rule in the frozen output,
+   without changing stored rules. See https://typeroll.com/docs/tools/redirects/.
+
 The managed importer stores cleaned HTML. Typeroll does not convert HTML into blocks, and `set_page_mode` never rewrites HTML. You, the external agent, rebuild the imported content with ordinary block tools. The owner does not need to convert every Page manually. There is no editor conversion preview; it was removed in Core 0.2.58. Preserve the complete source before switching modes and never publish the empty intermediate Page.
 
 d. Rebuild into editable blocks according to the selected intent. Preserve exact

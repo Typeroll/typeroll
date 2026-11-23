@@ -11,6 +11,8 @@ import { apiError, apiResponse, requireApiKey } from '../../../../../../lib/api-
 import { getStore } from '../../../../../../lib/datastore';
 import { paths } from '@typeroll/shared';
 import type { Media } from '@typeroll/shared';
+import { importStatus, type ImportingMedia } from '../../../../../../lib/media/import-retry';
+import { mediaReadiness } from '../../../../../../lib/media/readiness';
 
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;
@@ -46,7 +48,8 @@ export const GET: APIRoute = async ({ request, params }) => {
   }
   const slice = items.slice(0, limit);
   const nextCursor = items.length > limit ? encodeCursor({ after_id: slice[slice.length - 1]!.id }) : null;
-  return apiResponse(ctx, { media: slice, next_cursor: nextCursor, preparation: await mediaPreparationStatus(ctx.orgId, ctx.siteId) });
+  return apiResponse(ctx, { media: slice.map(media => ({ ...media, import: importStatus(media as ImportingMedia), readiness: mediaReadiness(media) })),
+    next_cursor: nextCursor, preparation: await mediaPreparationStatus(ctx.orgId, ctx.siteId) });
 };
 
 /** DELETE with an explicit bounded list; never a whole-library deletion. */

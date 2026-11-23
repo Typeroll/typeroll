@@ -7,7 +7,10 @@ These tools wrap `/api/v1/sites/{siteId}/redirects`, with `/{redirectId}` for a 
 The same API key works over REST; see
 [calling the same operations over REST](../overview/#calling-the-same-operations-over-rest).
 
-Redirects are built into the static site as a Cloudflare Pages `_redirects` file. They're 301 permanent redirects by default.
+Customer-account publications use Cloudflare Pages `_redirects` for native path
+rules and Cloudflare Bulk Redirects for excess exact paths. Sites stay static.
+Query-string sources use the in-page delivery described below. Redirects use
+301 by default.
 
 ## `create_redirect`
 
@@ -129,8 +132,10 @@ dry run first, fix the reported rules, then repeat the call without `dry_run`.
 Each response also has `capacity`: the static and dynamic Cloudflare Pages rules
 the Site's redirects emit after the call (`static`, `dynamic`, including
 generated slash aliases), the limits (`limit_static` 2000, `limit_dynamic` 100),
-`remaining_static` and `over_limit`. Page redirects and old file addresses share
-the same limit. Publication adds media replacement rules on top.
+`remaining_static` and `over_limit`. These counts describe configured rules,
+before publication-only media compaction. Page redirects and old file addresses
+share the same limit. Publication adds media replacement rules and can omit
+individual file rules already covered by an equivalent prefix rule.
 
 ### Static overflow (Core 0.3.46 and later)
 
@@ -141,6 +146,10 @@ Cloudflare Bulk Redirects. Slash variants, explicit destinations and HTTP status
 codes are retained. `capacity.overflow_static` counts the current excess and
 `bulk_required` says when Bulk access is needed. `over_limit` still describes
 the Pages file budget, rather than an unconditional publication failure.
+
+The hybrid is the default: native rules travel with each Pages deployment and
+reserve the shared Bulk quota for overflow. Moving every Site's ordinary rules
+into Bulk would consume that account-wide quota and its staging capacity too.
 
 The website hostname must be proxied through a Cloudflare zone in the hosting
 account. Bulk access needs **Account Filter Lists** and **Bulk URL Redirects**
@@ -173,6 +182,47 @@ Returns all configured redirects.
 
 Deletes a redirect by its id from `list_redirects`.
 
+## Image and file addresses
+
+Updating HTML, `srcset`, CSS backgrounds and share-image fields makes the new
+site request the new file addresses directly. It does not update image search
+results, external embeds or previously shared links. Preserve old public file
+addresses independently of the site's current HTML; do not remove their
+coverage merely because no current page references them.
+
+Use this order when planning a media migration:
+
+1. Keep a public address serving the same safe file where possible. A media
+   item's `public_path` can preserve a legacy path. It preserves the path, not
+   the hostname: moving the file to another host still needs compatible routing.
+2. Use one prefix rule when the whole namespace has an established mapping and
+   the remaining path and filename stay unchanged. For example,
+   `/wp-content/uploads/*` can point to
+   `https://images.example.com/wp-content/uploads/:splat` when those files really
+   exist there. Do not infer a wildcard from a partial list of imported images,
+   or capture live pages or exceptions with it.
+3. Keep individual mappings where destinations or HTTP statuses differ, such
+   as files renamed to unrelated content-hashed names. Excess exact rules can
+   use Bulk Redirects; the publisher never drops required mappings to fit a quota.
+
+Private editor addresses and generated variants that have never been public
+do not need automatic compatibility redirects. Explicitly configured redirects
+remain the owner's routing decisions. Deleting a file and retiring unsafe bytes
+are separate operations; this policy never republishes a deleted or unsafe file.
+
+From **Core 0.3.48**, the publisher omits an individual literal file rule from the
+frozen output only when an existing prefix or placeholder rule produces exactly
+the same destination and HTTP status. It checks the actual slash policy,
+generated base aliases and narrower-pattern precedence. Ambiguous and encoded
+paths keep their exact rules. Sites with generated facet or archive-pagination
+routes keep exact rules until their complete rendered route inventory is known.
+The stored rules remain unchanged and the
+publisher never invents a broader wildcard for this optimization. Older build
+engines receive the already compacted redirect array in the frozen publication.
+
+The existing `/media/*` move to a separate media host already uses one prefix
+rule. See [website and media hosts](../../guides/customer-publishing/#website-and-media-hosts).
+
 ## After a slug change
 
 If you rename a page's slug, always create a redirect:
@@ -185,6 +235,28 @@ The AI agent handles both steps automatically when you phrase it this way.
 
 ## Redirect limits
 
-Cloudflare Pages supports up to 2,100 redirects per site. For large migrations, the AI agent prioritises the most-trafficked URLs first.
+Cloudflare Pages allows **2,000 static rules and 100 dynamic rules per Site**.
+These are separate budgets, not a pool of 2,100 interchangeable rules.
+Generated slash aliases, host rules and file compatibility rules count too.
+Typeroll keeps native rules in Pages and places excess exact paths in Bulk
+Redirects. It never prioritizes traffic by silently discarding other mappings.
+
+Cloudflare's default Bulk quotas, checked in November 2026, are account-wide:
+
+| Cloudflare plan | URLs across all lists | Lists | Bulk redirect rules |
+| --------------- | --------------------- | ----- | ------------------- |
+| Free            | 10,000                | 5     | 15                  |
+| Pro             | 25,000                | 5     | 15                  |
+| Business        | 50,000                | 5     | 15                  |
+| Enterprise      | 1,000,000             | 25    | 50                  |
+
+These are provider defaults, not a Typeroll allowance per Site. The account's
+highest Cloudflare plan determines its quota; Enterprise limits can be agreed
+separately. Check [Cloudflare's current limits](https://developers.cloudflare.com/rules/url-forwarding/#availability)
+before planning capacity. All lists count, including inactive staging lists and
+customer-owned lists. Typeroll's two managed lists must fit at the same time:
+20,000 active mappings can require roughly 40,000 entries during staging, before
+other lists are counted. A full quota stops publication with an actionable
+error and preserves the configured mappings.
 
 Static redirect overflow requires the Organization’s shared build engine. A Pages Git build without that engine keeps the native redirect limit and reports that build setup is required. Existing organization engines do not need to update automatically: the overflow plan and renderer travel with the frozen publication.

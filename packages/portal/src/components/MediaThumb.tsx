@@ -1,5 +1,6 @@
 import { useRef } from 'react';
 import type { Media } from '@typeroll/shared';
+import { mediaReadiness } from '../lib/media/readiness';
 
 /** What a media item is, for its thumbnail, the type filter and which fields may use it. */
 export type MediaKind = 'image' | 'video' | 'pdf' | 'audio' | 'other';
@@ -45,6 +46,10 @@ const AUDIO_ICON = (
 export function MediaThumb({ item, size = 160 }: { item: Media; size?: number }) {
   const video = useRef<HTMLVideoElement>(null);
   const kind = mediaKind(item);
+  const readiness = mediaReadiness(item);
+  if (!readiness.selectable) return <span className="mthumb mthumb--file" role="img" aria-label={readiness.state === 'failed' ? 'File unavailable' : 'File awaiting verification'} title={readiness.message ?? undefined}>
+    {DOCUMENT_ICON}<span className="mthumb__type">{readiness.state === 'failed' ? 'Unavailable' : 'Pending'}</span>
+  </span>;
   // Logos and graphics (often transparent) show whole on a light ground; photos fill the square.
   const graphic = /\.(png|svg|gif|ico)$/i.test(item.filename) || /svg|png|gif|icon/.test(item.mime_type ?? '');
   if (kind === 'image') return <img className={`mthumb mthumb--image${graphic ? ' mthumb--graphic' : ''}`} src={thumbnailSource(item, size)} alt="" loading="lazy" decoding="async" />;

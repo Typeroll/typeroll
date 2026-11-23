@@ -59,7 +59,7 @@ const webServer = target.isRemote ? undefined : {
 const RESERVED_NAMES_NOT_FOUND = '--host-resolver-rules=MAP *.test ~NOTFOUND, MAP *.invalid ~NOTFOUND, MAP *.example ~NOTFOUND, MAP example.com ~NOTFOUND, MAP *.example.com ~NOTFOUND';
 
 /** Specs that also run in Firefox and WebKit (`npm run test:e2e:install` installs both). */
-const CROSS_ENGINE_TESTS = /(?:editor-draft-recovery|forms-multistep-validation|address-field-parity|media-and-carousel|mobile-site-switcher|fluid-typography|contextual-spacing|design-tokens|post-card-hit-area|migration-design|link-role-hover|preview-links)\.spec\.ts/;
+const CROSS_ENGINE_TESTS = /(?:editor-draft-recovery|forms-multistep-validation|address-field-parity|media-and-carousel|media-import-readiness|mobile-site-switcher|fluid-typography|contextual-spacing|design-tokens|post-card-hit-area|migration-design|link-role-hover|preview-links)\.spec\.ts/;
 const CROSS_ENGINE_SPECS = [
   { name: 'firefox', device: 'Desktop Firefox' },
   { name: 'webkit', device: 'Desktop Safari' },

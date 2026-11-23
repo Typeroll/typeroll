@@ -118,6 +118,12 @@ it('does not retry a refused source and reports it as a permanent failure', asyn
   expect(fetch).toHaveBeenCalledTimes(1);
 });
 
+it.each(['media_source_empty', 'media_source_redirect'])('preserves the actionable source failure %s without retrying it', async code => {
+  vi.stubGlobal('fetch', vi.fn(async () => Response.json({ error: code }, { status: 422 })));
+  await expect(copy()).rejects.toMatchObject({ status: 422, code });
+  expect(fetch).toHaveBeenCalledTimes(1);
+});
+
 it('recovers when a retried 5xx is followed by a valid receipt', async () => {
   vi.useFakeTimers({ toFake: ['setTimeout'] });
   try {

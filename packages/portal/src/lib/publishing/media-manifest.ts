@@ -9,6 +9,8 @@ import { getSiteDomains, getOrganizationDomains, markOrganizationMediaHostUsed, 
 import { siteMediaPrefix } from '../media-keys';
 import { allowedMediaExtensions, isScriptableMediaType, mediaNameMatchesType, mediaTypeEssence, passiveTypeForName, SVG_MEDIA_TYPE } from '../media/file-types';
 import type { ImportingMedia } from '../media/import-retry';
+import { privateMediaReferences } from '../media/readiness';
+export { privateMediaReferences } from '../media/readiness';
 
 type MarkedMedia = Media & { svg_sanitized?: { sha256?: string } };
 
@@ -77,19 +79,6 @@ function safeRetainedEntry(entry: any): boolean {
   return mediaTypeEssence(entry.mime_type) !== SVG_MEDIA_TYPE || entry.svg_sanitized === true;
 }
 
-/** Stable private media identities in serialized content, never signed URLs. */
-export function privateMediaReferences(value: unknown): Array<{ siteId: string; mediaId: string }> {
-  const found = new Map<string, { siteId: string; mediaId: string }>();
-  const serialized = typeof value === 'string' ? value : JSON.stringify(value);
-  for (const match of (serialized ?? '').matchAll(/\/api\/sites\/([a-zA-Z0-9_%.-]+)\/media\/([a-zA-Z0-9_%.-]+)\/content(?=[?#\s"'<>),\]\\]|$)/g)) {
-    try {
-      const siteId = decodeURIComponent(match[1]), mediaId = decodeURIComponent(match[2]);
-      if (siteId.includes('/') || mediaId.includes('/')) continue;
-      found.set(`${siteId}/${mediaId}`, { siteId, mediaId });
-    } catch { /* Invalid encoded paths cannot resolve to a stored media identity. */ }
-  }
-  return [...found.values()];
-}
 function assertPublicMediaReferences(content: unknown) {
   const unresolved = privateMediaReferences(content);
   if (unresolved.length) throw new ConnectionError(`Cannot publish: ${unresolved.length} image or file reference(s) still use a private Typeroll address. Re-select or re-import media ${unresolved[0].mediaId} from this site's Media library, then try again.`, 409, 'media_reference_unresolved');
@@ -288,9 +277,9 @@ export async function publicationMediaManifest<T extends Record<string, any>>(or
 export function authoredMediaContent(publication: Record<string, any>): Record<string, any> {
   const { media: _media, media_manifest: _manifest, retained_media_manifests: _retained,
     source_impact_snapshot: _impact, reference_mapping: _mapping, media_replacement_redirects: _replacement,
-    media_host_redirects: _host, ...content } = publication;
+    media_host_redirects: _host, media_redirect_omissions: _omitted, ...content } = publication;
   const generated = new Set([...(_replacement ?? []), ...(_host ?? [])].map(rule => rule.id));
-  return { ...content, redirects: (content.redirects ?? []).filter((rule: any) => !generated.has(rule.id)) };
+  return { ...content, redirects: [...(content.redirects ?? []), ...(_omitted ?? [])].filter((rule: any) => !generated.has(rule.id)) };
 }
 
 /**

@@ -39,7 +39,7 @@ export const POST: APIRoute = async ({ request, params }) => {
       // The record exists and the Site's media migration retries the copy.
       // Answer with its id, so the caller polls it instead of importing again.
       const media = await getStore().getDoc<ImportingMedia>(`${paths.media(ctx.orgId, ctx.siteId)}/${error.mediaId}`);
-      return apiResponse(ctx, { media_id: error.mediaId, cdn_url: media?.cdn_url ?? null, filename: media?.filename ?? null,
+      return apiResponse(ctx, { media_id: error.mediaId, cdn_url: null, filename: media?.filename ?? null,
         content_type: media?.mime_type ?? null, size_bytes: null, finalize: null, finalize_error: null,
         import: { state: 'pending', error_code: error.code ?? 'media_transfer_unavailable',
           message: `The media record exists, but the file has not been copied yet: ${error.message} It is retried automatically; poll GET media/${error.mediaId} until import.state is complete instead of importing it again.`,

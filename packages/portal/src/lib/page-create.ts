@@ -14,6 +14,7 @@ import { sanitizeBody } from './sanitize';
 import { buildMediaLookup, transformBodyForSeo } from './seo-transform';
 import { isLivePageStatus, retireRedirectsShadowingUrl } from './redirect-hygiene';
 import { markSiteDirty } from './auto-deploy';
+import { mediaReferenceIssue } from './media/write-readiness';
 
 const CREATE_FIELDS = ['path', 'parent', 'sort_order', 'template', 'kind', 'author', 'language',
   'breadcrumb_label', 'excerpt', 'seo_title', 'seo_description', 'og_title', 'og_description', 'og_image', 'seo_image_alt', 'canonical_url', 'append_seo_suffix', 'footer_spacing',
@@ -170,6 +171,8 @@ export async function createPage(ctx: WcCtx, input: Partial<Page>, actor: WriteA
   }
   const headingError = await validatePagePresentation(ctx, type, page);
   if (headingError) throw new WorkingCopyError(headingError, 400);
+  const mediaIssue = await mediaReferenceIssue(ctx, page);
+  if (mediaIssue) throw new WorkingCopyError(mediaIssue.message, 409, mediaIssue.code, mediaIssue.details);
   const layout_warnings = await pageFooterSpacingWarnings(ctx, page, input as Record<string, unknown>, type.template);
   const created = await getStore().createDocIfMissing(paths.page(ctx.orgId, ctx.siteId, page.id, ctx.versionId), { ...page, _provenance: authority.provenance });
   if (!created) throw new WorkingCopyError('A page with this address was just created. Reload and try again.', 409);

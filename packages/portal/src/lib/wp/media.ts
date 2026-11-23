@@ -141,12 +141,16 @@ export class WPMediaTransfer {
       if (error instanceof SvgRejectedError) await this.store.updateDoc(mediaPath, { import_pending: false, import_rejected: true, import_error: error.message, import_error_code: 'media_svg_invalid' });
       else if ((await this.store.getDoc<Media>(mediaPath))?.storage?.state !== 'ready') {
         if (permanentImportFailure(error)) {
-          // A refused source (4xx) would only fail again. A record made for
-          // this call is removed with anything the Worker stored; a pending
-          // record from an earlier import is left as it was.
+          // A refused source (4xx) would only fail again. Remove a new record;
+          // keep an older identity for reference repair, with an explicit
+          // stopped failure instead of its stale automatic retry promise.
           if (!pending) {
             await this.store.deleteDoc(mediaPath);
             await r2.send(new DeleteObjectCommand({ Bucket: media!.storage!.bucket, Key: upload.key }), { abortSignal: AbortSignal.timeout(20_000) }).catch(() => {});
+          } else {
+            const failure = { code: error instanceof ConnectionError ? error.code ?? 'media_transfer_unavailable' : 'media_transfer_unavailable', message: error instanceof Error ? error.message : 'The source file could not be copied.' };
+            await this.store.updateDoc(mediaPath, { import_error: failure.message, import_error_code: failure.code, import_retry_at: null,
+              migration_failed: true, migration_error: { ...failure, at: new Date().toISOString(), transient: false } });
           }
           throw error;
         }

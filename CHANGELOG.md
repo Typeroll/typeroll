@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.3.48 (candidate, MCP 0.45.149)
+
+- Omit equivalent per-file redirect lines already covered by existing patterns
+  in frozen publications, retaining authored rules, exceptions, status codes and
+  pattern precedence. Document public media URL continuity, the Pages/Bulk
+  hybrid, account quotas and staging capacity in the public guides and recipes.
+- Keep unfinished imports visible for repair while disabling selection and
+  previews. Report media readiness in REST/MCP lists and individual reads;
+  pending imports return no file URL and do not count as completed batch uploads.
+- Refuse new private media references in Page creation and Page/partial drafts
+  until the file is verified, including drafts saved by older releases. Preserve
+  existing broken references during unrelated edits so they can be repaired.
+- Stop automatic retries when a pending re-import receives a permanent failure,
+  preserving its identity and actionable source error. Distinguish files set
+  aside from transfers that are still running in Publishing.
+
 ## 0.3.46 (candidate, MCP 0.45.148 unchanged)
 
 - Respect Cloudflare's 500-item page limit when reading Bulk Redirect lists.

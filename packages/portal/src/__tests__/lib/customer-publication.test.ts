@@ -1784,6 +1784,22 @@ it('freezes a new source without deleted unreferenced media from the live snapsh
   expect(job.accept_missing_media).not.toBe(true);
 });
 
+it('freezes equivalent media rules as one prefix while retaining authored rows and exceptions', async () => {
+  const store = getStore();
+  const rules = Array.from({ length: 20 }, (_, i) => ({ id: `photo-${i}`, from_path: `/wp-content/uploads/photo-${i}.jpg`, to_path: `https://images.example.com/wp-content/uploads/photo-${i}.jpg`, status_code: 301 }));
+  rules.push({ id: 'media-prefix', from_path: '/wp-content/uploads/*', to_path: 'https://images.example.com/wp-content/uploads/:splat', status_code: 301 },
+    { id: 'renamed', from_path: '/wp-content/uploads/renamed.jpg', to_path: 'https://images.example.com/unrelated-hash.jpg', status_code: 301 },
+    { id: 'temporary', from_path: '/wp-content/uploads/temporary.jpg', to_path: 'https://images.example.com/wp-content/uploads/temporary.jpg', status_code: 302 });
+  for (const { id, ...doc } of rules) await store.setDoc(`${paths.redirects('org', 'site')}/${id}`, doc);
+  await executeCustomerPublication({ ...args, dryRun: true });
+  const job = await store.getDoc<any>(jobPath);
+  expect(job.status, job.error).toBe('succeeded');
+  expect(mocks.source.mock.calls[0][0].redirects).toEqual(rules.slice(-3));
+  expect(mocks.source.mock.calls[0][0].media_redirect_omissions).toHaveLength(20);
+  expect(await store.listDocs(paths.redirects('org', 'site'))).toHaveLength(rules.length);
+  expect(mocks.push).not.toHaveBeenCalled();
+});
+
 it('recovers a live publication whose verification runner could not start without rebuilding, uploading or changing DNS', async () => {
   await executeCustomerPublication(args); complete(); mocks.probe.mockResolvedValue(true);
   await executeCustomerPublication(args);

@@ -372,8 +372,18 @@ Core 0.2.107 checks Pages capacity during dry-run and final upload:
 2,000 static, 100 dynamic, 1,000 characters per line, with generated slash variants
 and hostname aliases included. `_redirects` has a bounded 10 MiB transport envelope;
 `_headers` keeps 128 KiB. Source preflight counts configured rules conservatively;
-final output excludes redirects shadowing built pages. Remove obsolete shadowed
-rules at source when close to capacity. Never split `_redirects` into multiple files.
+final output excludes redirects shadowing built pages. Core 0.3.46 and later
+deliver excess exact paths through account-scoped Bulk Redirects with the
+Organization's shared build engine and approved Cloudflare scopes. All active
+and staging lists share the account quota. Never drop required mappings or
+prioritize only popular URLs to fit that quota; resolve the capacity blocker.
+Core 0.3.48 omits literal file rules already covered by an existing prefix or
+placeholder with the same destination and HTTP status, including narrower-rule
+precedence and generated aliases. Stored rules are unchanged. Keep old public
+file URLs working independently of rewriting HTML; do not invent wildcards from
+partial media inventories or create automatic rules for never-public variants.
+Use https://typeroll.com/docs/tools/redirects/ for current budgets and the policy.
+Never split `_redirects` into multiple files.
 After publication, run `verify_migration_urls` against the agreed full inventory.
 Do not delete old provider redirect lists without separate explicit approval.
 

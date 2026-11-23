@@ -16,6 +16,7 @@ import {
 import { paths } from '@typeroll/shared';
 import { structureLockRefusal } from '../../../../../lib/structure-lock';
 import type { Media, Page } from '@typeroll/shared';
+import { mediaReferenceIssue } from '../../../../../lib/media/write-readiness';
 
 // Whitelist of fields that the editor can update. Everything else is silently
 // ignored so a compromised client can't write arbitrary fields (status flags,
@@ -117,6 +118,8 @@ export const PUT: APIRoute = async ({ request, cookies, params, locals }) => {
     update.html_content = transformed;
     warnings = lintBodyForSeo(transformed);
   }
+  const mediaIssue = await mediaReferenceIssue(lockCtx, update, existing);
+  if (mediaIssue) return json({ error: mediaIssue.message, code: mediaIssue.code, details: mediaIssue.details }, 409);
   const layout_warnings = await pageFooterSpacingWarnings(lockCtx, { ...existing, ...update } as Page, update, type?.template);
   await snapshotRevision({
     orgId: owner_org_id,

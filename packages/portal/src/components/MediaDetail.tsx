@@ -3,6 +3,7 @@ import { mediaKind, MediaThumb, mediaThumbStyles } from './MediaThumb';
 import { X, Copy, Trash2, ExternalLink } from 'lucide-react';
 import { publicMediaUrl } from '../lib/media/presentation';
 import type { Media } from '@typeroll/shared';
+import { mediaReadiness } from '../lib/media/readiness';
 
 interface Props {
   siteId: string;
@@ -121,7 +122,8 @@ export default function MediaDetail({ siteId, item, onClose, onUpdated, onDelete
   }
 
   const publicUrl = publicMediaUrl(item);
-  const ready = !item.storage || item.storage.state === 'ready';
+  const readiness = mediaReadiness(item);
+  const ready = readiness.selectable;
   const kind = mediaKind(item);
   const isImage = kind === 'image';
   const dimensions =
@@ -145,8 +147,8 @@ export default function MediaDetail({ siteId, item, onClose, onUpdated, onDelete
           </div>
         </header>
 
-        <div className={`mdetail__preview${kind === 'pdf' ? ' mdetail__preview--file' : ''}`}>
-          {!ready ? <p role="status">Finishing upload… Reopen the file after upload verification completes.</p> : isImage ? (
+        <div className={`mdetail__preview${kind === 'pdf' || !ready ? ' mdetail__preview--file' : ''}`}>
+          {!ready ? <p role={readiness.state === 'failed' ? 'alert' : 'status'}>{readiness.message}</p> : isImage ? (
             <img
               src={item.cdn_url}
               alt={draft.alt_text ?? draft.filename}
@@ -195,12 +197,12 @@ export default function MediaDetail({ siteId, item, onClose, onUpdated, onDelete
               </div>
               <p className="mdetail__hint">Anyone with this link can open the file without signing in. This link stays available until the file is deleted.</p>
             </> : <>
-              <p className="mdetail__hint">{item.file_publication?.state === 'pending' ? 'The copy may already be public. Retry publication to verify its address before sharing it.' : 'Preview is available to signed-in site members. It is not a public sharing link.'}</p>
+              <p className="mdetail__hint">{!ready ? 'No verified file is available for preview or selection.' : item.file_publication?.state === 'pending' ? 'The copy may already be public. Retry publication to verify its address before sharing it.' : 'Preview is available to signed-in site members. It is not a public sharing link.'}</p>
               {kind === 'pdf' && <>
                 <button type="button" className="btn" onClick={publishFile} disabled={publishing || busy || !ready || status === 'saving'}>{publishing ? 'Publishing and verifying…' : 'Publish PDF'}</button>
                 <p className="mdetail__hint">Makes this PDF public on your organization’s media domain. No website build or image preparation is needed.</p>
               </>}
-              {kind !== 'pdf' && <p className="mdetail__hint">Publish a page that uses this file to make it public.</p>}
+              {kind !== 'pdf' && ready && <p className="mdetail__hint">Publish a page that uses this file to make it public.</p>}
             </>}
             {publicationError && <p role="alert" className="mdetail__hint">{publicationError}</p>}
             {ready && <a href={item.cdn_url} target="_blank" rel="noopener noreferrer">Open private preview</a>}

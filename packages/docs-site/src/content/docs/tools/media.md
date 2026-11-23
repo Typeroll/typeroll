@@ -240,7 +240,7 @@ answers **HTTP 202** instead of 503:
 ```json
 {
   "media_id": "…",
-  "cdn_url": "https://…/api/sites/{siteId}/media/{media_id}/content",
+  "cdn_url": null,
   "filename": "photo.jpg",
   "content_type": "image/jpeg",
   "size_bytes": null,
@@ -279,10 +279,15 @@ listed under `failed_media` (see
 again: poll `GET /api/v1/sites/{siteId}/media/{media_id}` (`read_media`) until
 `import.state` is `complete` before referencing it in published content. An
 import of the same `source_url` while it is pending reuses the record and tries
-the copy at once.
+the copy at once. From Core 0.3.48, pending imports return `cdn_url: null`;
+the address is returned when the copy succeeds. Earlier releases also returned
+the reserved address while the file was still unavailable.
 
 A refused source or file (HTTP 4xx, for example `media_source_unavailable` or
 `media_integrity_failed`) remains an error and leaves no new media record.
+If the import already had a pending record, its identity is retained for
+reference repair and its status becomes `failed`, with automatic retries
+stopped. Correct the source before retrying.
 
 For many files, send up to four import requests at a time; Typeroll copies up to
 four files from one source host at once. A source path with characters such as
@@ -338,6 +343,12 @@ the stricter import prerequisite.
 
 Returns this site’s media assets with stable media URLs, filenames and sizes. A stable URL can identify a private original; it is not necessarily a public delivery URL.
 
+From Core 0.3.48, each entry also includes `import` and `readiness`:
+`{ state: "ready" | "pending" | "failed", selectable: boolean, message: string | null }`.
+The library includes unfinished imports so they can be inspected or repaired;
+their presence does not mean a file exists. Only choose entries whose
+`readiness.selectable` is `true`.
+
 ## `read_media`
 
 Reads one media item's metadata by `media_id`. Use it to check a single file,
@@ -348,6 +359,15 @@ For a file imported from a URL, `import` reports its copy: `state` (`pending`,
 `next_attempt_at` and `failed_attempts`. It is `null` for files uploaded
 directly. A `failed` import was set aside after its automatic retries or
 refused; import it again or retry media migration in Publishing.
+
+From Core 0.3.48, this response also includes `readiness`, with the same
+meaning as in `list_media`. The editor disables selection and previews for
+unfinished or failed files. Creating a Page or adding a new private media
+reference to a Page or partial draft refuses an unavailable file with
+HTTP 409 `media_not_ready` and `details.media_id` / `details.state`. Existing
+broken references remain editable so they can be repaired or removed. The
+publication check still refuses missing referenced files unless the caller
+explicitly accepts publishing without them.
 
 ## `upload_media_inline`
 
