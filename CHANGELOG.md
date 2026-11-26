@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.53 (candidate, MCP 0.45.151)
+
+- Restore owner-validated preview collection caching through the production
+  timing transport. Reuse frozen content revisions only after validating the
+  storage owner's epoch and current content, with bounded shared memory.
+- Read referenced preview media concurrently with bounded fan-out. Move legacy
+  image-width receipt hydration off the Worker response path and capture widths
+  when background preparation completes. Serve originals while metadata is
+  unavailable, and measure the responsive-media stage separately.
+
 ## 0.3.52 (candidate, MCP 0.45.151)
 
 - Add reusable durable application email queues with explicit review/start,

@@ -76,26 +76,43 @@ export function rewritePreviewFileLinks(html: string, media: import('@typeroll/s
  * Images without prepared variants keep their original file.
  */
 export async function withPreviewResponsiveImages(html: string, orgId: string, siteId: string, token: string): Promise<string> {
+  const { measureRequestStep } = await import('./runtime/request-timing');
+  return measureRequestStep('preview_responsive_media', () => responsiveImages(html, orgId, siteId, token));
+}
+
+async function responsiveImages(html: string, orgId: string, siteId: string, token: string): Promise<string> {
   const { getStore } = await import('./datastore');
   const { buildMediaLookup, paths, transformBodyForSeo } = await import('@typeroll/shared');
-  const { preparedSourceWidth, preparedVariantSlots } = await import('./publishing/media-storage');
+  const { preparedVariantSlots, hydratePreparedWidths } = await import('./publishing/media-storage');
+  const { runMaintenance } = await import('./runtime/background-tasks');
   const base = `/preview/${encodeURIComponent(siteId)}/media/`;
   const suffix = `?token=${encodeURIComponent(token)}`;
   const ids = new Set<string>();
   for (const match of html.matchAll(new RegExp(`${base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^?"'\\s<>/]+)\\?token=`, 'g'))) {
-    try { ids.add(decodeURIComponent(match[1]!)); } catch { /* not ours */ }
+    try {
+      const id = decodeURIComponent(match[1]!);
+      if (id && id !== '.' && id !== '..' && !/[\/\\\0]/.test(id)) ids.add(id);
+    } catch { /* not ours */ }
   }
   if (!ids.size) return transformBodyForSeo(html, buildMediaLookup([]));
+  const items: Array<(import('@typeroll/shared').Media & { id: string }) | null> = [];
+  const selected = [...ids].slice(0, 500);
+  // Bound fan-out even on very large pages. Each referenced id is read once.
+  for (let offset = 0; offset < selected.length; offset += 8) {
+    items.push(...await Promise.all(selected.slice(offset, offset + 8).map(id =>
+      getStore().getDoc<import('@typeroll/shared').Media>(`${paths.media(orgId, siteId)}/${id}`))));
+  }
   const media = [];
-  for (const id of [...ids].slice(0, 500)) {
-    let item = await getStore().getDoc<import('@typeroll/shared').Media>(`${paths.media(orgId, siteId)}/${id}`);
+  for (const item of items) {
     if (!item) continue;
-    // Images stored without dimensions: the width from their preparation receipt, read once.
-    if (!item.width && !item.prepared_width) { const width = await preparedSourceWidth(orgId, siteId, item); if (width) item = { ...item, prepared_width: width }; }
-    const url = `${base}${encodeURIComponent(id)}${suffix}`;
+    const url = `${base}${encodeURIComponent(item.id)}${suffix}`;
     const slots = preparedVariantSlots(item) ?? [];
     media.push({ ...item, cdn_url: url, variants: slots.flatMap(({ slot, width }) => (['avif', 'webp'] as const)
       .map(format => ({ width, format, cdn_url: `${url}&variant=${slot}.${format}`, size_bytes: 0 }))) });
   }
+  // Legacy records may predate dimension capture. Render their originals now;
+  // Workers keep bounded receipt hydration alive after sending the response.
+  // New preparations capture widths when they finish, before a preview needs them.
+  await runMaintenance(() => hydratePreparedWidths(orgId, siteId, items.filter(item => item !== null)), 'image dimensions will be retried on the next preview');
   return transformBodyForSeo(html, buildMediaLookup(media));
 }

@@ -265,6 +265,11 @@ export class ShardedStore implements ReadWriteStore {
   async readSnapshot<T>(root: string, work: () => Promise<T>): Promise<T> {
     return (await this.storeFor(root)).readSnapshot(root, work);
   }
+
+  async readSnapshotCached<T>(root: string, key: string, work: () => Promise<T>): Promise<T> {
+    if (!/^organizations\/[^/]+\/sites\/[^/]+\/versions$/.test(root)) throw new Error('Only version content projections may be cached');
+    return (await this.storeFor(root)).readSnapshotCached(root, key, work);
+  }
 }
 
 function stripId(value: Record<string, any>): Record<string, any> {

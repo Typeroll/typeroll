@@ -85,6 +85,14 @@ publication to reach the public static site. Preview the selected Site and
 Version before deploying. Use a site version for changes you want to isolate
 from `main`, and check each tool's version support.
 
+From Core 0.3.53, previews reuse unchanged content data and calculated content
+revisions after checking them with the datastore on every request. Saved edits,
+deletions and changes inherited from a base Version invalidate that reuse.
+Preview HTML and permission decisions are not shared between visitors. An
+expiring preview link continues to show current content and reports when its
+content revision has changed. Typeroll Cloud gains this behavior when its Core
+runtime is updated; self-hosted installations need to update their runtime.
+
 - [Your first site](../../getting-started/first-site/) walks through editing and publishing.
 - [Built-in block catalog](../block-library/) helps you choose a block.
 - [Create a Page template](../page-templates/) builds the shared article layout.

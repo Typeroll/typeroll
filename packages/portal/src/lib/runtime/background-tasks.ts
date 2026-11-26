@@ -10,8 +10,8 @@ export function withBackgroundTasks<T>(waitUntil: (task: Promise<unknown>) => vo
 /** Only optional maintenance belongs here, never content or authorization writes.
  * Workers keep it alive after the response; local tools await the same work.
  */
-export async function runMaintenance(work: () => Promise<void>): Promise<void> {
-  const task = withoutRequestTiming(work).catch(() => { console.warn('[maintenance] revision pruning deferred until the next save'); });
+export async function runMaintenance(work: () => Promise<void>, failureMessage = 'revision pruning deferred until the next save'): Promise<void> {
+  const task = withoutRequestTiming(work).catch(() => { console.warn(`[maintenance] ${failureMessage}`); });
   const waitUntil = background.getStore();
   if (waitUntil) waitUntil(task);
   else await task;

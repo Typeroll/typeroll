@@ -76,3 +76,38 @@ it('explains unavailable PDF paths and links to the published file only when its
   expect(live).toContain('href="https://live.test/media/missing.pdf"');
   expect(live).not.toContain('?t=review');
 });
+
+it('overlaps media reads with bounded fan-out and preserves site scope and responsive output', async () => {
+  const { vi } = await import('vitest');
+  const { makeTmpFixtures, resetDatastore } = await import('../helpers/tmp-fixtures');
+  const { getStore } = await import('../../lib/datastore');
+  const { withPreviewResponsiveImages } = await import('../../lib/preview-media');
+  makeTmpFixtures(); await resetDatastore();
+  const store = getStore();
+  let active = 0, peak = 0, reads = 0;
+  let release!: () => void, ready!: () => void;
+  const barrier = new Promise<void>(resolve => { release = resolve; });
+  const started = new Promise<void>(resolve => { ready = resolve; });
+  const spy = vi.spyOn(store, 'getDoc').mockImplementation(async path => {
+    expect(path).toMatch(/^organizations\/org\/sites\/mysite\/media\/image\d+$/);
+    reads++; active++; peak = Math.max(peak, active);
+    if (active === 8) ready();
+    await barrier;
+    active--;
+    return { id: path.split('/').at(-1)!, mime_type: 'image/png', width: 1600, height: 900, sha256: 'a'.repeat(64),
+      storage: { provider: 'organization_r2', state: 'ready' },
+      preparation: { state: 'ready', recipe: 'v2', source_sha256: 'a'.repeat(64) } };
+  });
+  try {
+    const images = Array.from({ length: 59 }, (_, i) => `<img src="${signed(`image${i}`)}" alt="Image ${i}">`).join('');
+    const pending = withPreviewResponsiveImages(images + `<img src="${signed('image0')}"><img src="${signed('..%2F..%2Fprivate')}"><img src="/preview/other/media/image0?token=x">`, 'org', 'mysite', TOKEN);
+    await started;
+    expect(reads).toBe(8);
+    release();
+    const result = await pending;
+    expect(reads).toBe(59);
+    expect(peak).toBe(8);
+    expect(result).toContain('variant=w1024.avif 1024w');
+    expect(result).toContain('/preview/other/media/image0?token=x');
+  } finally { release(); spy.mockRestore(); }
+});

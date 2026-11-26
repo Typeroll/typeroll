@@ -34,11 +34,19 @@ function provider(calls: any[], { fail = false } = {}) {
   };
 }
 
-async function seed() {
+async function seed(sql = false) {
   process.env.PREVIEW_HMAC_SECRET = SECRET;
   makeTmpFixtures();
   await resetDatastore();
   const { getStore } = await import('../../lib/datastore');
+  if (sql) {
+    const { SqlStore, localTransport } = await import('../../lib/store/sql-store');
+    const { SqlDocumentEngine } = await import('../../lib/store/sql-engine');
+    const { nodeSqliteDriver } = await import('../../lib/store/node-sqlite');
+    const { setRuntimeStore } = await import('../../lib/datastore');
+    const sqlStore = new SqlStore(localTransport(new SqlDocumentEngine(nodeSqliteDriver())), () => crypto.randomUUID());
+    setRuntimeStore(() => sqlStore);
+  }
   const store = getStore();
   await store.setDoc(paths.site(ORG, SITE), { name: 'Derive', created_at: new Date().toISOString() });
   await store.setDoc(paths.version(ORG, SITE, MAIN_VERSION_ID), { name: 'Main', kind: 'main', created_at: new Date().toISOString(), robots_blocked: false });
@@ -71,9 +79,51 @@ beforeEach(async () => {
   state.providers = [];
   (await import('../../lib/publishing/preview-derivation')).clearPreviewDerivationCache();
 });
-afterEach(() => { vi.unstubAllEnvs(); });
+afterEach(async () => { vi.unstubAllEnvs(); vi.restoreAllMocks(); (await import('../../lib/datastore')).setRuntimeStore(null); });
 
 describe('previewDerivation', () => {
+  it('skips publication reads and hashing on an unchanged validated revision, and sees edits immediately', async () => {
+    await seed(true);
+    const { vstore } = await import('../../lib/version-store');
+    const { getStore } = await import('../../lib/datastore');
+    const { previewDerivation } = await import('../../lib/publishing/preview-derivation');
+    // More than 8 MiB as an in-memory projection: sites without deriving apps
+    // must retain just their revision, not miss the cache on every large page.
+    for (let i = 0; i < 6; i++) await getStore().setDoc(paths.page(ORG, SITE, `large${i}`), {
+      title: `Large ${i}`, slug: `large${i}`, content_type: 'page', content_mode: 'html',
+      html_content: `<p>${'x'.repeat(800_000)}</p>`, status: 'published',
+    });
+    const pages = vi.spyOn(vstore, 'pages');
+    const first = await previewDerivation(ORG, SITE, MAIN_VERSION_ID);
+    expect(first.content_revision).toMatch(/^[a-f0-9]{32}$/);
+    const again = await previewDerivation(ORG, SITE, MAIN_VERSION_ID);
+    expect(again.content_revision).toBe(first.content_revision);
+    expect(pages).toHaveBeenCalledTimes(1);
+    await getStore().updateDoc(paths.page(ORG, SITE, 'acme'), { title: 'New accepted title' });
+    const edited = await previewDerivation(ORG, SITE, MAIN_VERSION_ID);
+    expect(edited.content_revision).not.toBe(first.content_revision);
+    expect(pages).toHaveBeenCalledTimes(2);
+    await getStore().deleteDoc(paths.page(ORG, SITE, 'acme'));
+    expect((await previewDerivation(ORG, SITE, MAIN_VERSION_ID)).content_revision).not.toBe(edited.content_revision);
+    expect(pages).toHaveBeenCalledTimes(3);
+  });
+
+  it('invalidates a cached branch when its inherited content changes or its version disappears', async () => {
+    await seed(true);
+    const { getStore } = await import('../../lib/datastore');
+    const { previewDerivation } = await import('../../lib/publishing/preview-derivation');
+    const branch = paths.version(ORG, SITE, 'review');
+    await getStore().setDoc(branch, { kind: 'branch', base_version_id: MAIN_VERSION_ID, name: 'Review' });
+    const main = await previewDerivation(ORG, SITE, MAIN_VERSION_ID);
+    const first = await previewDerivation(ORG, SITE, 'review');
+    expect(first.content_revision).not.toBe(main.content_revision);
+    expect((await previewDerivation(ORG, SITE, 'review')).content_revision).toBe(first.content_revision);
+    await getStore().updateDoc(paths.page(ORG, SITE, 'acme'), { title: 'Inherited change' });
+    expect((await previewDerivation(ORG, SITE, 'review')).content_revision).not.toBe(first.content_revision);
+    await getStore().deleteDoc(branch);
+    await expect(previewDerivation(ORG, SITE, 'review')).rejects.toThrow('Publication version no longer exists');
+  });
+
   it('derives from the accepted public content a publication would freeze, and reuses only identical input', async () => {
     await seed();
     const calls: any[] = [];

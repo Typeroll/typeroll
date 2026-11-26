@@ -235,6 +235,15 @@ separately. No automatic cleanup removes a file still owned by another record.
 
 ## Files and embedded forms in preview
 
+From Core 0.3.53, a preview reads the metadata for its referenced images with
+bounded concurrency. It uses prepared responsive variants when their dimensions
+are recorded. An older image with missing dimensions displays its original
+immediately while the Cloudflare runtime reads its preparation receipt in the
+background; a later view can use the responsive variants. New preparation jobs
+also capture missing widths when they complete. This reads metadata and does
+not re-encode images during page navigation. Typeroll Cloud needs the matching
+Core runtime update; self-hosted Cloudflare installations use the same behavior.
+
 From Core 0.3.45, stored PDF paths and imported aliases resolve through private
 preview media and open in a separate tab, outside the preview sandbox. Core
 0.3.47 also resolves absolute private file links with fragments such as `#page=2`,
