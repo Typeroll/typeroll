@@ -25,6 +25,13 @@ for (const [width, height] of [[320, 568], [390, 844], [844, 390]]) {
         }]),
       ]);
       await stubPublishingReady(page);
+      await page.route('**/api/sites/default/changes-since-deploy', async route => {
+        const response = await route.fetch();
+        const value = await response.json();
+        await route.fulfill({ response, json: { ...value, impact: { ...value.impact, build_forecast: {
+          mode: 'automatic', cache: 'available', reasons: ['route_dependencies_checked_during_build'], reuse_verified: false,
+        } } } });
+      });
       await page.setViewportSize({ width, height });
       await gotoReady(page, '/app/sites/default/pages/deploy-visibility');
       expect(pageErrors, 'The editor must hydrate without recovering from a rendering mismatch').toEqual([]);
@@ -32,6 +39,7 @@ for (const [width, height] of [[320, 568], [390, 844], [844, 390]]) {
       await expect(page.getByRole('link', { name: 'Live URL' })).toHaveCount(0);
       const deploy = page.getByRole('button', { name: 'Deploy site', exact: true });
       await expect(deploy).toBeInViewport({ ratio: 1 });
+      await expect(page.getByText('Build forecast: compatible render cache is available. The build checks each route before reusing it.', { exact: true })).toBeVisible();
       const status = page.getByRole('combobox', { name: 'Publishing status' });
       await expect(status.locator('option:checked')).toHaveText('Published');
       await status.scrollIntoViewIfNeeded();
@@ -57,7 +65,8 @@ for (const [width, height] of [[320, 568], [390, 844], [844, 390]]) {
       // Exercise the actual UI request, but keep external hosting out of this local test.
       await page.route('**/api/sites/default/deploy', (route) => route.fulfill({ json: { jobId: 'visibility-test' } }));
       await page.route('**/api/sites/default/deploys/visibility-test', (route) => route.fulfill({ json: { status: 'failed', error: 'Test deployment stopped',
-        render_report: { format: 1, mode: 'partial', rendered: 3, reused: 49, total: 52, removed: 0, reason: 'unchanged_routes_reused' } } }));
+        render_report: { format: 1, mode: 'partial', rendered: 3, reused: 49, total: 52, removed: 0, reason: 'unchanged_routes_reused',
+          cache: { read: 'hit', save: 'saved', storage: 'uploaded', encoding: 'gzip', retained_routes: 52, omitted_routes: 0 } } } }));
       page.once('dialog', (dialog) => dialog.accept());
       const request = page.waitForRequest((request) => request.url().endsWith('/api/sites/default/deploy') && request.method() === 'POST');
       await deploy.click();
@@ -66,6 +75,7 @@ for (const [width, height] of [[320, 568], [390, 844], [844, 390]]) {
       await expect(page.getByText('Test deployment stopped', { exact: true })).toBeVisible();
       const renderSummary = page.getByText('3 pages rebuilt · 49 reused', { exact: true });
       await expect(renderSummary).toBeVisible();
+      await expect(page.getByText('Render cache saved for 52 routes.', { exact: true })).toBeVisible();
       await renderSummary.scrollIntoViewIfNeeded();
       expect(await renderSummary.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
       await page.screenshot({ path: testInfo.outputPath(`partial-build-summary-${width}.png`) });

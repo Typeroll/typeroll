@@ -132,3 +132,14 @@ it('says when a baseline predates recorded configuration paths', () => {
   expect(compareImpact(legacy, after).changes.find(change => change.id === 'apps')).toMatchObject({ details_unavailable: 'baseline_predates_details' });
   expect(compareImpact(legacy, after).changes.find(change => change.id === 'apps')).not.toHaveProperty('details');
 });
+
+it('distinguishes a Core release label from an actual renderer change', () => {
+  const before = { protocol: 2 as const, org_id: 'org', site_id: 'site', version_id: 'main', core_commit: 'old', entries: [],
+    platform: { renderer_digest: 'a'.repeat(64), extension_runtime_version: '1', extension_protocol_version: 3, extension_installations: 0 } };
+  const after = { ...before, core_commit: 'new' };
+  const same = compareImpact(before, after);
+  expect(same.classification).toBe('none');
+  expect(same.platform_changes).toMatchObject([{ id: 'core_commit', affects_output: false }]);
+  expect(same.reasons).not.toContain('toolchain_changed');
+  expect(compareImpact(before, { ...after, platform: { ...after.platform, renderer_digest: 'b'.repeat(64) } }).classification).toBe('site_wide');
+});

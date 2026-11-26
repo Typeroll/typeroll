@@ -1,8 +1,11 @@
 import { createHash } from 'node:crypto';
+import { gzipSync, gunzipSync } from 'node:zlib';
+import { rendererSourceDigest } from './publication-render-identity.mjs';
 
 import { SEO_VALIDATOR_VERSION } from './publication-validation.mjs';
 export const RENDER_CACHE_FORMAT = 10;
 export const MAX_RENDER_CACHE_BYTES = 32 * 1024 * 1024;
+export const MAX_RENDER_CACHE_DECODED_BYTES = 128 * 1024 * 1024;
 export const digest = value => createHash('sha256').update(typeof value === 'string' || Buffer.isBuffer(value) ? value : JSON.stringify(value)).digest('hex');
 
 // Custom blocks are declarative templates, aliases and containers, not
@@ -14,11 +17,11 @@ export function createRenderPlan(publication, manifest, runtime = process.versio
   // The renderer receives exactly these fixture records. Operational snapshots,
   // source hashes and retained media-transfer manifests are not HTML inputs.
   // Prepared media metadata is tracked per URL when the renderer reads it.
-  const globals = Object.fromEntries(['site_url', 'version_id', 'core_commit', 'robots_blocked', 'site', 'settings',
+  const globals = Object.fromEntries(['site_url', 'version_id', 'robots_blocked', 'site', 'settings',
     'partials', 'menus', 'blockTypes', 'pageTemplates', 'contentTypes', 'forms', 'apps', 'extensions']
     .map(key => [key, publication[key]]));
-  const renderer = Object.fromEntries(Object.entries(manifest.files).filter(([name]) =>
-    name !== 'publication.json' && !name.startsWith('content/')));
+  const renderer = rendererSourceDigest(manifest.files);
+  const inputs = { renderer, globals: digest(globals), environment: digest({ runtime, platform: process.platform, arch: process.arch, locale: Intl.DateTimeFormat().resolvedOptions(), year }) };
   const globalKey = digest({ format: RENDER_CACHE_FORMAT, validator: SEO_VALIDATOR_VERSION, runtime, renderer, globals,
     platform: process.platform, arch: process.arch, locale: Intl.DateTimeFormat().resolvedOptions(), year });
   const keys = Object.fromEntries(pages.map(page => [page.id, {
@@ -42,7 +45,7 @@ export function createRenderPlan(publication, manifest, runtime = process.versio
   if (normalized.globals.site?.domain === new URL(publication.site_url).hostname) normalized.globals.site.domain = 'typeroll-website.invalid';
   const domainKey = digest({ normalized, renderer, runtime, format: RENDER_CACHE_FORMAT, validator: SEO_VALIDATOR_VERSION,
     platform: process.platform, arch: process.arch, locale: Intl.DateTimeFormat().resolvedOptions(), year });
-  return { format: RENDER_CACHE_FORMAT, globalKey, keys, origins, domainKey };
+  return { format: RENDER_CACHE_FORMAT, globalKey, keys, origins, domainKey, inputs };
 }
 
 export function routeFingerprint(plan, pathname, props) {
@@ -58,14 +61,44 @@ export function validCacheEntry(entry, fingerprint) {
     && Buffer.byteLength(entry.html) <= 4 * 1024 * 1024 && digest(entry.html) === entry.sha256;
 }
 
-export function readRenderCache(bytes) {
+/** Legacy JSON and bounded gzip use the same route/integrity contract. */
+export function inspectRenderCache(bytes, { maxDecodedBytes = MAX_RENDER_CACHE_DECODED_BYTES } = {}) {
+  maxDecodedBytes = Math.min(maxDecodedBytes, MAX_RENDER_CACHE_DECODED_BYTES);
+  if (bytes.length > MAX_RENDER_CACHE_BYTES) return { cache: null, read: 'too_large' };
   try {
-    if (bytes.length > MAX_RENDER_CACHE_BYTES) return null;
-    const cache = JSON.parse(bytes.toString());
-    if (cache.format !== RENDER_CACHE_FORMAT || !cache.routes || Array.isArray(cache.routes)
-      || typeof cache.routes !== 'object' || Object.keys(cache.routes).length > 20000) return null;
-    return cache;
-  } catch { return null; }
+    const gzip = bytes[0] === 0x1f && bytes[1] === 0x8b;
+    const decoded = gzip ? gunzipSync(bytes, { maxOutputLength: maxDecodedBytes }) : bytes;
+    if (decoded.length > maxDecodedBytes) return { cache: null, read: 'too_large' };
+    const cache = JSON.parse(decoded.toString());
+    if (cache.format !== RENDER_CACHE_FORMAT) return { cache: null, read: 'format_mismatch' };
+    if (!cache.routes || Array.isArray(cache.routes) || typeof cache.routes !== 'object' || Object.keys(cache.routes).length > 20000)
+      return { cache: null, read: 'invalid' };
+    return { cache, read: 'hit', encoding: gzip ? 'gzip' : 'json', stored_bytes: bytes.length, decoded_bytes: decoded.length };
+  } catch (error) { return { cache: null, read: error?.code === 'ERR_BUFFER_TOO_LARGE' ? 'too_large' : 'invalid' }; }
+}
+export function readRenderCache(bytes) { return inspectRenderCache(bytes).cache; }
+
+/** Keep useful routes even when an unusually large site exceeds the budget. */
+export function encodeRenderCache(cache, { maxBytes = MAX_RENDER_CACHE_BYTES, maxDecodedBytes = MAX_RENDER_CACHE_DECODED_BYTES } = {}) {
+  maxBytes = Math.min(maxBytes, MAX_RENDER_CACHE_BYTES);
+  maxDecodedBytes = Math.min(maxDecodedBytes, MAX_RENDER_CACHE_DECODED_BYTES);
+  let routes = Object.entries(cache.routes), omitted = 0;
+  for (;;) {
+    const decoded = Buffer.from(JSON.stringify({ ...cache, routes: Object.fromEntries(routes) }));
+    const bytes = decoded.length <= maxDecodedBytes ? gzipSync(decoded) : null;
+    if (bytes && bytes.length <= maxBytes)
+      return { bytes, decoded_bytes: decoded.length, retained_routes: routes.length, omitted_routes: omitted };
+    if (!routes.length) return null;
+    const keep = Math.floor(routes.length / 2);
+    omitted += routes.length - keep; routes = routes.slice(0, keep);
+  }
+}
+
+export function cacheInvalidations(cache, plan) {
+  if (!cache) return [];
+  if (!cache.inputs) return ['legacy_identity'];
+  return Object.entries({ renderer: 'renderer_changed', globals: 'global_inputs_changed', environment: 'runtime_changed' })
+    .filter(([key]) => cache.inputs[key] !== plan.inputs[key]).map(([, reason]) => reason);
 }
 
 const originEscape = value => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

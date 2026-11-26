@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { renderCacheReport } from './render-cache-report.mjs';
 
 export const BUILD_PROTOCOL = 1;
 export const BUILD_RUNTIME = '22.23.5';
@@ -43,7 +44,8 @@ export function renderReport(value) {
     || !['rendered', 'reused', 'total', 'removed'].every(key => Number.isSafeInteger(value[key]) && value[key] >= 0 && value[key] <= 20000)
     || value.rendered + value.reused !== value.total || (value.mode === 'partial') !== (value.reused > 0)
     || !['forced_full', 'no_valid_cache', 'unchanged_routes_reused', 'dependencies_changed'].includes(value.reason)) return undefined;
-  return Object.fromEntries(['format', 'mode', 'rendered', 'reused', 'total', 'removed', 'reason'].map(key => [key, value[key]]));
+  const cache = renderCacheReport(value.cache);
+  return { ...Object.fromEntries(['format', 'mode', 'rendered', 'reused', 'total', 'removed', 'reason'].map(key => [key, value[key]])), ...(cache ? { cache } : {}) };
 }
 
 export function assertFilePath(name, { artifact = false } = {}) {

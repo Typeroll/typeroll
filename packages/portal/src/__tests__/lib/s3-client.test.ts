@@ -141,3 +141,16 @@ describe('transient storage errors', () => {
     expect(denied).toHaveLength(1);
   });
 });
+
+it('reads cache object metadata with HEAD without downloading its body', async () => {
+  const { HeadObjectCommand } = await import('../../lib/net/s3');
+  const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { headers: { 'content-length': '12345', etag: '"cache"' } }));
+  try {
+    const r2 = new S3Client({ endpoint: 'https://account.r2.cloudflarestorage.com', credentials: { accessKeyId: 'synthetic', secretAccessKey: 'synthetic' }, forcePathStyle: true });
+    const result = await r2.send(new HeadObjectCommand({ Bucket: 'private', Key: 'cache.json' }));
+    expect(result).toMatchObject({ ContentLength: 12345, ETag: '"cache"' });
+    expect(result.Body).toBeUndefined();
+    const input = fetch.mock.calls[0]![0];
+    expect(input instanceof Request ? input.method : fetch.mock.calls[0]![1]?.method).toBe('HEAD');
+  } finally { fetch.mockRestore(); }
+});

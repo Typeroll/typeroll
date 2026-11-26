@@ -953,8 +953,10 @@ breadcrumbs and previous/next links without invalidating unrelated Pages.
 
 Unchanged addresses are excluded from Astro's HTML generation queue. Their
 verified HTML is restored into the new output directory; removed addresses are
-never restored. Shared settings, templates, domains, Core source
-and Node versions still invalidate reuse. From Core 0.2.17, custom block templates,
+never restored. Shared settings, templates, domains, actual rendering source
+and Node versions still invalidate reuse. From Core 0.3.53, a changed Core release
+label alone leaves identical rendering source reusable; API/data-schema release
+metadata and generated repository instructions are outside the HTML identity. From Core 0.2.17, custom block templates,
 aliases and containers use the same recorded queries and navigation dependencies
 as native blocks. Installing a custom block does not make every Page depend on
 all other Pages. Changing its definition still invalidates shared output.
@@ -996,11 +998,14 @@ and private R2 cache, isolated per Site and version. Only completed build attemp
 can supply a baseline. Cache files expire after seven days; missing, expired or
 corrupt files cause a normal full build. Core 0.2.17 introduces media dependency
 receipts; its first build refreshes an older cache with a full render. Cache
-storage is optional and never a prerequisite for publishing. Older engines continue building in full until updated.
+storage is optional and never a prerequisite for publishing. Engines predating remote render-cache transfer continue building in full until updated.
 
 Independent builds of the generated repository retain `.publication-cache.json`
 beside `publication.json` between runs. Keep it outside Git and the public `dist/`
-directory. The current cache is limited to 32 MiB; a larger cache is discarded.
+directory. From Core 0.3.53, the file uses gzip with a 32 MiB transfer limit and a
+128 MiB decoded limit. Existing JSON caches remain readable. If the site exceeds
+the budget, the cache retains a bounded subset of routes instead of discarding
+every route; omitted routes render again on the next build.
 Use `TYPEROLL_FULL_BUILD=1 npm run build` to compare against a clean full render.
 Ordinary starter builds outside the frozen-publication workflow do not use this
 cache automatically.
@@ -1009,8 +1014,35 @@ The editor's deployment status reports **pages rebuilt** and **reused** after
 rendering. API and MCP clients read `job.render_report` through
 `get_deploy_status`; `mode`, `rendered`, `reused`, `total`, `removed` and `reason`
 describe actual HTML work. Counts include generated pagination and facet routes.
-`get_publication_impact` remains a provisional source comparison, not a prediction
-of cache hits or monetary savings.
+From Core 0.3.53, optional `render_report.cache` records cache read/save state,
+encoding, stored/decoded byte counts, retained/omitted routes and renderer,
+shared-input or environment invalidation. Updated organization engines also
+report transfer and storage failures, including a missing object, a failed
+checksum or an unsuccessful cache upload. A successful publication can still
+lack a saved cache; the editor explains that separately.
+
+`get_publication_impact` adds `build_forecast`: `full`, `automatic` or `unknown`,
+with structured reasons and cache availability. It checks scoped cache metadata
+and object size without downloading page HTML. `automatic` means a compatible
+baseline is available; the build still checks every route's actual dependencies.
+`unknown` covers missing metadata from older builds, incomplete comparisons and
+unavailable storage checks. `reuse_verified` stays false before the build.
+Forecasts do not promise a route count, elapsed time or monetary savings.
+
+From Core 0.3.53, removing media can reuse preparation when every remaining
+immutable completion receipt is proven by the previous verified publication.
+Changed bytes, destinations, aliases or recipes still need preparation. This
+skips the preparation pass only; materialization and publication verification
+continue to verify required files. The media counter advances at checkpoints,
+so a zero count can include runner setup, dependency installation and a batch
+that has not reported its checkpoint yet.
+
+These improvements require the matching Core runtime and a newly frozen
+publication renderer. Existing caches may need one baseline refresh for the
+new identity. The compressed cache and completed media cursor work with the
+Core 0.3.52 engine contract too. Update the organization engine to obtain the
+additional transfer diagnostics. Typeroll Cloud receives the feature when its
+pinned runtime is updated; self-hosted installations update their runtime.
 
 The generated repository includes public content, renderer source and a dependency
 lock. Run `npm ci` and `npm run build` with its pinned Node version to build it on

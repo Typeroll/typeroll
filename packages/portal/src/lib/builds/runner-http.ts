@@ -55,12 +55,16 @@ export async function runnerRequest(request: Request, org: string, action: strin
             mediaAccess = await customerBuildMediaAccess(org, claim.identity.site_id, publication.media_manifest, claim.identity.publication_id, publication.retained_media_manifests);
         }
         let renderCache, assetCache;
+        let renderCacheState = 'pointer_missing';
         if (metadata.kind === 'publication' && input.render_cache === true) {
           try {
             const cached = await store.getDoc<RenderCachePointer>(renderCachePath(claim.identity));
-            if (cached?.account === storage.account && /^[a-f0-9]{64}$/.test(cached.key) && /^[a-f0-9]{64}$/.test(cached.sha256) && /^[a-f0-9-]{36}$/.test(cached.lease))
-              renderCache = { url: await storage.grant(`builds/${org}/tasks/${cached.key}/${cached.lease}/render-cache.json`), sha256: cached.sha256 };
-          } catch { /* A missing/expired cache must not prevent claiming a publication. */ }
+            if (cached) {
+              if (cached.account !== storage.account) renderCacheState = 'account_changed';
+              else if (!/^[a-f0-9]{64}$/.test(cached.key) || !/^[a-f0-9]{64}$/.test(cached.sha256) || !/^[a-f0-9-]{36}$/.test(cached.lease)) renderCacheState = 'pointer_invalid';
+              else { renderCache = { url: await storage.grant(`builds/${org}/tasks/${cached.key}/${cached.lease}/render-cache.json`), sha256: cached.sha256 }; renderCacheState = 'available'; }
+            }
+          } catch { renderCacheState = 'grant_failed'; }
         }
         if (metadata.kind === 'publication' && input.asset_cache === true) {
           try {
@@ -72,7 +76,7 @@ export async function runnerRequest(request: Request, org: string, action: strin
         }
         return privateJson({ ...claim, kind: metadata.kind, source_url: await storage.grant(metadata.source_key),
           storage_account_id: storage.account, media_access_batched: batchedAccess, direct_upload: metadata.kind === 'publication' && metadata.direct_upload !== false,
-          ...(input.render_cache === true && metadata.kind === 'publication' ? { render_cache_supported: true, render_cache: renderCache } : {}),
+          ...(input.render_cache === true && metadata.kind === 'publication' ? { render_cache_supported: true, render_cache: renderCache, render_cache_state: renderCacheState } : {}),
           ...(assetCache ? { asset_cache: assetCache } : {}),
           ...(mediaAccess ? { media_access: mediaAccess } : {}) });
       });
@@ -232,12 +236,17 @@ export async function runnerRequest(request: Request, org: string, action: strin
       // Publish only a completed attempt, scoped to its organization/site/version.
       // A late older build cannot replace a newer baseline. Objects expire under
       // the existing task lifecycle; integrity is verified by the next executor.
-      const pointer: RenderCachePointer = { key, lease, sha256: input.render_cache_sha256, account: metadata.storage_account_id, created_at: task.created_at };
+      const pointer: RenderCachePointer = { key, lease, sha256: input.render_cache_sha256, account: metadata.storage_account_id, created_at: task.created_at,
+        ...(renderReport(input.render_report)?.cache ? { diagnostics: renderReport(input.render_report)!.cache } : {}) };
       try {
         const cachePath = renderCachePath(task.identity);
         await store.createDocIfMissing(cachePath, pointer);
         await store.compareAndUpdateDoc<RenderCachePointer>(cachePath, value => value.created_at <= pointer.created_at, pointer);
-      } catch { /* Cache persistence is optional after successful completion. */ }
+      } catch {
+        const report = renderReport(input.render_report);
+        if (report?.cache) await store.updateDoc(`${buildTasksPath(org)}/${key}`, { render_report: { ...report, cache: { ...report.cache, storage: 'pointer_failed' } } }).catch(() => {});
+        console.warn('[render-cache] optional baseline pointer could not be saved');
+      }
     }
     if (metadata.kind === 'qualification') {
       const activated = await store.compareAndUpdateDoc<EngineConfiguration>(engineConfigurationPath(org, provider), value => value.revision === engine.revision && value.status === 'qualifying', { status: 'ready' });

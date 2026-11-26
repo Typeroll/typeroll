@@ -21,6 +21,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { isPendingDeploy } from './EditorStatus';
 import { useDeployProgress, queueSentence } from './useDeployProgress';
 import type { PublicationImpact } from '../lib/publishing/impact';
+import { cacheSummary, forecastSummary } from '../lib/publishing/cache-summary';
 import { liveDomainConfirmMessage, postDeploy } from './liveDomainConfirmation';
 
 export interface StatusOption {
@@ -428,6 +429,7 @@ export default function PublishMenu({
               </div>)}
             </details>}
             {job?.render_report && <p role="status" className="pmenu__hint">{job.render_report.rendered} pages rebuilt · {job.render_report.reused} reused</p>}
+            {job?.render_report?.cache && cacheSummary(job.render_report.cache) && <p className="pmenu__hint" role="status">{cacheSummary(job.render_report.cache)}</p>}
             {job?.build_progress?.queue && <p className="pmenu__hint" role="status">{queueSentence(job.build_progress.queue.message)} The build starts automatically; there is no need to publish again.</p>}
             {job?.build_progress && !job.build_progress.queue && <p className="pmenu__hint" role="status">{job.build_progress.step.replaceAll('_', ' ')} — {(job.build_progress.media_continuations ?? 0) > 0 ? `part ${job.build_progress.media_continuations! + 1}${job.build_progress.retries ? `, ${job.build_progress.retries} retried` : ''}` : `attempt ${job.build_progress.attempt}`}{job.build_progress.total > 0 ? ` · ${job.build_progress.completed}/${job.build_progress.total} files` : ''}</p>}
             {job?.phase === 'distributing' && <p className="pmenu__hint" role="status">Distributing… Your site is being made publicly available. The link will appear automatically when ready.</p>}
@@ -442,6 +444,7 @@ export default function PublishMenu({
                   ? 'A verified content comparison is not available yet. This list currently uses save dates.'
                   : changes.total === 0 ? 'No saved public content changes.'
                   : `Pages added or changed: ${changes.impact.changed_pages + changes.impact.added_pages}. Pages to remove: ${changes.impact.removed_pages}. Total changes: ${changes.total}.`}
+                {changes.impact.build_forecast && <p>{forecastSummary(changes.impact.build_forecast)}</p>}
                 {changes.impact.metadata_only > 0 && <p>Items with updated publication timestamps: {changes.impact.metadata_only}.</p>}
                 {changes.impact.reasons.includes('toolchain_changed') && <p>The build runtime has changed since the last publication.</p>}
                 <p>This compares saved content. Unchanged pages may be reused; every deployment publishes a complete site.</p>

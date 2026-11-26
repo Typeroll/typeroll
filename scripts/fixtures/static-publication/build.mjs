@@ -11,7 +11,7 @@ import { writeSiteIcons, readFrozenIcon } from './site-icons.mjs';
 import { writeShareImages, readFrozenShareImage } from './share-images.mjs';
 import { readPublicationContent } from './content.mjs';
 import { resolvePublicationReferences } from './references.mjs';
-import { createRenderPlan, readRenderCache, MAX_RENDER_CACHE_BYTES, RENDER_CACHE_FORMAT } from '../packages/site-template/src/lib/publication-render-cache.mjs';
+import { createRenderPlan, inspectRenderCache, encodeRenderCache, cacheInvalidations, MAX_RENDER_CACHE_BYTES, MAX_RENDER_CACHE_DECODED_BYTES, RENDER_CACHE_FORMAT } from '../packages/site-template/src/lib/publication-render-cache.mjs';
 
 const buildYear = new Date().getUTCFullYear();
 const root = fileURLToPath(new URL('../', import.meta.url));
@@ -44,16 +44,24 @@ const work = path.join(root, '.publication-work');
 await fs.rm(work, { recursive: true, force: true });
 const cacheFile = path.join(root, '.publication-cache.json');
 let previousCache = null;
+const cacheReport = { read: process.env.TYPEROLL_FULL_BUILD === '1' ? 'forced' : 'missing' };
 if (process.env.TYPEROLL_FULL_BUILD !== '1') {
   try {
     const stat = await fs.lstat(cacheFile);
-    if (stat.isFile() && !stat.isSymbolicLink() && stat.size <= MAX_RENDER_CACHE_BYTES)
-      previousCache = readRenderCache(await fs.readFile(cacheFile));
-  } catch { /* The cache is optional; an unavailable baseline means a full build. */ }
+    if (!stat.isFile() || stat.isSymbolicLink()) cacheReport.read = 'invalid';
+    else if (stat.size > MAX_RENDER_CACHE_BYTES) cacheReport.read = 'too_large';
+    else {
+      const result = inspectRenderCache(await fs.readFile(cacheFile));
+      previousCache = result.cache; cacheReport.read = result.read;
+      cacheReport.read_bytes = stat.size;
+    }
+  } catch (error) { cacheReport.read = error.code === 'ENOENT' ? 'missing' : 'read_failed'; }
 }
 const cacheWork = path.join(work, 'render-cache');
 await fs.mkdir(cacheWork, { recursive: true });
 const renderPlan = createRenderPlan(publication, manifest, process.version, buildYear);
+cacheReport.inputs = renderPlan.inputs;
+cacheReport.invalidations = cacheInvalidations(previousCache, renderPlan);
 await fs.writeFile(path.join(cacheWork, 'input.json'), JSON.stringify({
   plan: renderPlan, cache: previousCache,
 }));
@@ -118,7 +126,7 @@ if (result.error || result.status !== 0) throw new Error('Static renderer build 
 // rebuilds the complete route inventory and global output from this complete tree.
 let cacheRoutes = Object.create(null);
 const currentRoutes = new Set();
-let rendered = 0, reused = 0, cacheBytes = 0, cacheOverflow = false;
+let rendered = 0, reused = 0, cacheBytes = 0, omittedRoutes = 0;
 for (const name of await fs.readdir(cacheWork)) {
   if (name === 'input.json') continue;
   const { pathname, reused: hit, reason, ...entry } = JSON.parse(await fs.readFile(path.join(cacheWork, name), 'utf8'));
@@ -133,14 +141,14 @@ for (const name of await fs.readdir(cacheWork)) {
     await fs.mkdir(path.dirname(destination), { recursive: true });
     await fs.writeFile(destination, entry.html);
   }
-  cacheBytes += Buffer.byteLength(JSON.stringify(entry)) + Buffer.byteLength(JSON.stringify(pathname)) + 2;
-  if (cacheBytes > MAX_RENDER_CACHE_BYTES - 1024) { cacheOverflow = true; cacheRoutes = Object.create(null); }
-  if (!cacheOverflow) cacheRoutes[pathname] = entry;
+  const entryBytes = Buffer.byteLength(JSON.stringify(entry)) + Buffer.byteLength(JSON.stringify(pathname)) + 2;
+  if (typeof entry.html === 'string' && Buffer.byteLength(entry.html) <= 4 * 1024 * 1024 && cacheBytes + entryBytes <= MAX_RENDER_CACHE_DECODED_BYTES - 65536) { cacheRoutes[pathname] = entry; cacheBytes += entryBytes; }
+  else omittedRoutes++;
   if (hit) reused++; else rendered++;
 }
 const report = { format: 1, mode: reused ? 'partial' : 'full', rendered, reused, total: rendered + reused,
   removed: Object.keys(previousCache?.routes ?? {}).filter(name => !currentRoutes.has(name)).length,
-  reason: process.env.TYPEROLL_FULL_BUILD === '1' ? 'forced_full' : !previousCache ? 'no_valid_cache' : reused ? 'unchanged_routes_reused' : 'dependencies_changed' };
+  reason: process.env.TYPEROLL_FULL_BUILD === '1' ? 'forced_full' : !previousCache ? 'no_valid_cache' : reused ? 'unchanged_routes_reused' : 'dependencies_changed', cache: cacheReport };
 await build({ entryPoints: [path.join(root, 'scripts/postprocess.ts')], outfile: path.join(work, 'postprocess.mjs'), bundle: true, platform: 'node', format: 'esm', packages: 'external', alias: { '@typeroll/shared': path.join(root, 'packages/shared/src/index.ts') } });
 const { postprocess } = await import(path.join(work, 'postprocess.mjs'));
 await postprocess(dist, publication);
@@ -178,13 +186,18 @@ await fs.writeFile(path.join(work, 'seo-report.json'), JSON.stringify(validation
 console.log('TYPEROLL_SEO_RESULT ' + JSON.stringify({ passed: validation.passed, errors: validation.error_count, warnings: validation.warning_count }));
 if (!validation.passed) { console.error(JSON.stringify(validation.errors.slice(0, 10))); throw new Error('publication_validation_failed'); }
 // Commit cache only after the complete output succeeds; it never enters dist or Git.
-const nextCache = JSON.stringify({ format: RENDER_CACHE_FORMAT, origins: renderPlan.origins, domainKey: renderPlan.domainKey, routes: cacheRoutes });
 try {
-  if (!cacheOverflow && Buffer.byteLength(nextCache) <= MAX_RENDER_CACHE_BYTES) {
-    await fs.writeFile(cacheFile + '.tmp', nextCache);
-    await fs.rename(cacheFile + '.tmp', cacheFile);
-  } else await fs.rm(cacheFile, { force: true });
-} catch { /* Cache storage cannot fail a successful static publication. */ }
+  const encoded = encodeRenderCache({ format: RENDER_CACHE_FORMAT, origins: renderPlan.origins, domainKey: renderPlan.domainKey, inputs: renderPlan.inputs, routes: cacheRoutes });
+  if (!encoded) throw Error('Cache metadata exceeds its size limit');
+  await fs.writeFile(cacheFile + '.tmp', encoded.bytes);
+  await fs.rename(cacheFile + '.tmp', cacheFile);
+  Object.assign(cacheReport, { save: encoded.retained_routes ? omittedRoutes + encoded.omitted_routes ? 'partial' : 'saved' : 'empty',
+    encoding: 'gzip', stored_bytes: encoded.bytes.length, decoded_bytes: encoded.decoded_bytes,
+    retained_routes: encoded.retained_routes, omitted_routes: omittedRoutes + encoded.omitted_routes });
+} catch {
+  cacheReport.save = 'write_failed';
+  await fs.rm(cacheFile, { force: true }).catch(() => {});
+}
 await fs.writeFile(path.join(work, 'render-report.json'), JSON.stringify(report));
 console.log('TYPEROLL_RENDER_RESULT ' + JSON.stringify(report));
 console.log(`Published ${publication.pages.length} content pages to dist/`);
