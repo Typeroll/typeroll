@@ -1,4 +1,4 @@
-import { S3Client, GetObjectCommand, PutObjectCommand, getSignedUrl } from '../net/s3';
+import { S3Client, GetObjectCommand, HeadObjectCommand, PutObjectCommand, getSignedUrl } from '../net/s3';
 import { getConnection, openCredentials, ConnectionError } from '../publishing/connections';
 import { cloudflareClient } from '../publishing/cloudflare-oauth';
 import { assertPrivateOriginalBucket } from '../publishing/cloudflare-connection';
@@ -9,6 +9,7 @@ import { MAX_ARTIFACT_BYTES, sha256 } from './contract.mjs';
 export async function buildStorage<T>(org: string, work: (storage: {
   account: string; put: (key: string, bytes: Buffer) => Promise<void>;
   read: (key: string, limit?: number) => Promise<Buffer>;
+  head: (key: string) => Promise<{ bytes: number }>;
   /** The object as chunks, size-checked while reading; consume it inside `work`. */
   stream: (key: string, limit?: number) => AsyncIterable<Uint8Array>;
   grant: (key: string, write?: boolean, contentType?: 'application/json' | 'application/octet-stream') => Promise<string>;
@@ -50,6 +51,11 @@ export async function buildStorage<T>(org: string, work: (storage: {
     return Buffer.concat(chunks);
   };
   try { return await work({ account, read, stream,
+    head: async key => {
+      const result = await client.send(new HeadObjectCommand({ Bucket: bucket, Key: keyFor(key) }), { abortSignal: AbortSignal.timeout(10_000) });
+      if (!Number.isSafeInteger(result.ContentLength) || result.ContentLength! < 0) throw new ConnectionError('Build storage returned no object size.', 503);
+      return { bytes: result.ContentLength! };
+    },
     put: async (key, bytes) => {
       if (bytes.length > MAX_ARTIFACT_BYTES) throw new ConnectionError('Build object exceeds its size limit.', 413);
       try { await client.send(new PutObjectCommand({ Bucket: bucket, Key: keyFor(key), Body: bytes, ContentType: 'application/json', CacheControl: 'private, no-store', IfNoneMatch: '*' })); }

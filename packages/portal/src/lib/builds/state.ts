@@ -3,8 +3,8 @@ import { ConnectionError, getConnection } from '../publishing/connections';
 import { equalToken } from './queue';
 import { sha256, BUILD_RUNTIME, LEGACY_BUILD_RUNTIME, type BuildIdentity } from './contract.mjs';
 
-export const renderCachePath = (identity: BuildIdentity) => `organizations/${identity.org_id}/build_render_caches/${sha256(`${identity.site_id}\0${identity.version_id}`)}`;
-export interface RenderCachePointer { key: string; lease: string; sha256: string; account: string; created_at: number }
+export const renderCachePath = (identity: Pick<BuildIdentity, 'org_id' | 'site_id' | 'version_id'>) => `organizations/${identity.org_id}/build_render_caches/${sha256(`${identity.site_id}\0${identity.version_id}`)}`;
+export interface RenderCachePointer { key: string; lease: string; sha256: string; account: string; created_at: number; diagnostics?: NonNullable<ReturnType<typeof import('./contract.mjs').renderReport>>['cache'] }
 
 export const assetCachePath = (identity: BuildIdentity) => `organizations/${identity.org_id}/build_asset_caches/${sha256(`${identity.site_id}\0${identity.version_id}`)}`;
 export interface AssetCachePointer extends RenderCachePointer { identity: BuildIdentity }

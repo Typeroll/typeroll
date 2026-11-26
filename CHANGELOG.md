@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.3.53 (candidate, MCP 0.45.152)
+
+- Reuse HTML across Core provenance-only updates when frozen rendering source,
+  runtime and actual content dependencies are identical. Keep complete output
+  validation, changed-code invalidation and removed-route checks.
+- Compress render caches within the existing transfer budget, bound decoded
+  size, and retain useful routes when a large site exceeds the cache budget.
+  Report read/save state, omitted routes, input invalidation and transfer failures.
+- Add scoped, time-bounded publication cache forecasts to impact API/MCP and the
+  editor. Keep forecasts provisional until actual route dependencies are checked.
+- Reuse media preparation after deletions when every remaining immutable receipt
+  is proven by the previous verified publication. Older cache-transfer engines
+  remain compatible; additional transfer diagnostics use the updated engine.
+
 ## 0.3.52 (candidate, MCP 0.45.151)
 
 - Add reusable durable application email queues with explicit review/start,

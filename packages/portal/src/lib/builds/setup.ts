@@ -8,6 +8,7 @@ import uploaderLock from './uploader-lock.json?raw';
 import directUpload from './direct-upload.mjs?raw';
 import executorSource from './executor.mjs?raw';
 import contractSource from './contract.mjs?raw';
+import cacheReportSource from './render-cache-report.mjs?raw';
 import assetsSource from './assets.mjs?raw';
 import diagnosticsSource from './diagnostics.mjs?raw';
 import { getStore } from '../datastore';
@@ -28,7 +29,7 @@ import { enqueueBuild, completedBuild } from './jobs';
 import { engineSourceDigest } from './engine-source';
 
 export function cloudflareBuildFiles(origin: string, org: string, revision: string): Record<string, string> {
-  return { 'package-lock.json': uploaderLock, 'static-verifier.mjs': staticVerifier, 'pages-redirect-limits.mjs': pagesRedirectLimits, 'direct-upload.mjs': directUpload.replace('../../../../shared/src/pages-redirect-limits.mjs', './pages-redirect-limits.mjs'), 'assets.mjs': assetsSource, 'executor.mjs': executorSource, 'diagnostics.mjs': diagnosticsSource, 'contract.mjs': contractSource, 'engine.json': JSON.stringify({ origin, org_id: org, revision }),
+  return { 'package-lock.json': uploaderLock, 'static-verifier.mjs': staticVerifier, 'pages-redirect-limits.mjs': pagesRedirectLimits, 'direct-upload.mjs': directUpload.replace('../../../../shared/src/pages-redirect-limits.mjs', './pages-redirect-limits.mjs'), 'assets.mjs': assetsSource, 'executor.mjs': executorSource, 'diagnostics.mjs': diagnosticsSource, 'contract.mjs': contractSource, 'render-cache-report.mjs': cacheReportSource, 'engine.json': JSON.stringify({ origin, org_id: org, revision }),
     '.node-version': BUILD_RUNTIME + '\n', 'package.json': JSON.stringify({ ...JSON.parse(uploaderPackage), scripts: { build: 'node executor.mjs', 'qualify:artifact': 'node finalize.mjs' } }),
     'finalize.mjs': "console.log('Typeroll build attempt finished. Static hosting is handled by the publication coordinator.');\n",
     'README.md': '# Typeroll shared builds\n\nGenerated source only. One runner for this organization. Site repositories and version branches remain separate. Public Worker URLs are disabled. Builds are dispatched explicitly by Typeroll.\n' };

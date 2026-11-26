@@ -125,7 +125,9 @@ test('partial output equals a clean full build after edits, deletion, noindex an
   t.after(harness.cleanup);
   const { output, destination } = harness;
   const run = async (full = false) => (await harness.run(full)).report;
-  assert.deepEqual(await run(), { format: 1, mode: 'full', rendered: 53, reused: 0, total: 53, removed: 0, reason: 'no_valid_cache' });
+  const initial = await run();
+  assert.deepEqual({ ...initial, cache: undefined }, { format: 1, mode: 'full', rendered: 53, reused: 0, total: 53, removed: 0, reason: 'no_valid_cache', cache: undefined });
+  assert.equal(initial.cache.read, 'missing'); assert.equal(initial.cache.encoding, 'gzip');
   value.pages[0].blocks[0].data.html += '<p>Changed body</p>'; value.pages[0].date_updated = '2026-09-18';
   value.publication_id = 'b'.repeat(64);
   const partial = await run();
@@ -615,4 +617,55 @@ test('build year invalidates page reuse and domain rebase caches together', () =
   assert.equal(before.domainKey, same.domainKey);
   assert.notEqual(before.keys.one.key, next.keys.one.key);
   assert.notEqual(before.domainKey, next.domainKey);
+});
+
+test('Core provenance and repository metadata do not invalidate identical rendering code', () => {
+  const value = publication();
+  const before = createRenderPlan(value, { files: { ...manifest.files, 'README.md': 'old', 'packages/shared/src/release.ts': 'old-version' } });
+  value.core_commit = 'b'.repeat(40);
+  const after = createRenderPlan(value, { files: { ...manifest.files, 'README.md': 'new', 'packages/shared/src/release.ts': 'new-version' } });
+  assert.equal(after.globalKey, before.globalKey);
+  assert.equal(after.domainKey, before.domainKey);
+  const changedCode = createRenderPlan(value, { files: { ...manifest.files, 'packages/shared/src/index.ts': 'changed-code' } });
+  assert.notEqual(changedCode.globalKey, before.globalKey);
+});
+
+test('release contract metadata has no consumers in frozen renderer sources', async () => {
+  for (const root of ['packages/site-template/src', 'packages/shared/src', 'scripts/fixtures/static-publication']) {
+    async function walk(directory) {
+      for (const entry of await fs.readdir(directory, { withFileTypes: true })) {
+        const file = path.join(directory, entry.name);
+        if (entry.isDirectory()) { if (entry.name !== '__tests__') await walk(file); }
+        else if (/\.(?:ts|tsx|mjs|astro)$/.test(file) && !file.endsWith('/release.ts')) {
+          const source = await fs.readFile(file, 'utf8');
+          assert.doesNotMatch(source, /\b(?:CORE_VERSION|DATA_SCHEMA_VERSION|DATA_SCHEMA_READABLE_MIN|DATA_SCHEMA_READABLE_MAX)\b/, file);
+        }
+      }
+    }
+    await walk(root);
+  }
+});
+
+test('a Core identity change reuses HTML and still produces the exact full output', async t => {
+  const value = publication(); value.pages.push({ ...page('home'), path: '/' });
+  const harness = await publicationBuildHarness(value); t.after(harness.cleanup);
+  await harness.run();
+  const { execFileSync } = await import('node:child_process');
+  const { pathToFileURL } = await import('node:url');
+  const legacyPath = path.join(harness.destination, '..', 'legacy-contract.mjs');
+  await fs.writeFile(legacyPath, execFileSync('git', ['show', 'core-v0.3.52:packages/portal/src/lib/builds/contract.mjs']));
+  const legacy = await import(pathToFileURL(legacyPath).href);
+  const cached = await fs.readFile(path.join(harness.destination, '.publication-cache.json'));
+  assert.ok(cached.length <= legacy.MAX_RENDER_CACHE_BYTES);
+  const transferred = Buffer.from(cached);
+  assert.equal(legacy.sha256(transferred), legacy.sha256(cached));
+  await fs.writeFile(path.join(harness.destination, '.publication-cache.json'), transferred);
+  value.core_commit = 'b'.repeat(40); value.publication_id = 'c'.repeat(64);
+  const result = await harness.run();
+  assert.equal(result.report.reused, 3); assert.equal(result.report.rendered, 0);
+  assert.equal(result.report.cache.save, 'saved');
+  assert.equal(legacy.renderReport(result.report).reused, 3);
+  await fs.rm(legacyPath);
+  const reused = await harness.output();
+  await harness.run(true); assert.deepEqual(await harness.output(), reused);
 });

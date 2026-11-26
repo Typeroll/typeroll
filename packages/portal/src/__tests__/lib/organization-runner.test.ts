@@ -473,3 +473,30 @@ it('recovers a TimeoutError reported by an installed engine and preserves the me
   expect(next.lease_id).not.toBe(claim.lease_id);
   expect((await request('fail', claim.token, failure)).status).toBe(409);
 });
+
+it.each([false, true])('keeps a completed publication valid when saving cache diagnostics (pointer failure: %s)', async pointerFailure => {
+  const { frozen, key } = await prepare();
+  const claim = await (await request('claim', runnerToken, { protocol: 1, render_cache: true })).json();
+  expect(claim.render_cache_state).toBe('pointer_missing');
+  const files = Object.fromEntries(Object.entries(qualificationFiles(identity.publication_id)).map(([name, value]) => [name, Buffer.from(value)]));
+  const artifact = encodeArtifact(frozen, files);
+  storage.objects.set(`builds/org/tasks/${key}/${claim.lease_id}/artifact.json`, artifact);
+  const cache = { read: 'hit', save: 'saved', storage: 'uploaded', retained_routes: 2,
+    inputs: { renderer: '1'.repeat(64), globals: '2'.repeat(64), environment: '3'.repeat(64) }, url: 'secret-url' };
+  const create = getStore().createDocIfMissing.bind(getStore());
+  if (pointerFailure) vi.spyOn(getStore(), 'createDocIfMissing').mockImplementation(async (path, data) => {
+    if (path === renderCachePath(frozen)) throw Error('private provider detail');
+    return create(path, data);
+  });
+  const response = await request('complete', claim.token, { key, lease_id: claim.lease_id, seo_report: validSeoReport(files), sha256: sha256(artifact), render_cache_sha256: 'd'.repeat(64),
+    render_report: { format: 1, mode: 'partial', rendered: 0, reused: 2, total: 2, removed: 0, reason: 'unchanged_routes_reused', cache } });
+  expect(response.status).toBe(200);
+  const pointer = await getStore().getDoc(renderCachePath(frozen));
+  if (pointerFailure) {
+    expect(pointer).toBeNull();
+    expect(await getStore().getDoc(`${buildTasksPath(org)}/${key}`)).toMatchObject({ status: 'completed', render_report: { cache: { storage: 'pointer_failed' } } });
+  } else {
+    expect(pointer).toMatchObject({ diagnostics: { read: 'hit', retained_routes: 2, inputs: cache.inputs } });
+    expect(JSON.stringify(pointer)).not.toContain('secret-url');
+  }
+});

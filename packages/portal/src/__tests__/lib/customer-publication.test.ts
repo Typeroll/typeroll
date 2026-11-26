@@ -27,7 +27,7 @@ const mocks = vi.hoisted(() => ({ github: vi.fn(), cloudflare: vi.fn(), push: vi
 vi.mock('../../lib/publishing/github-connection', () => ({ githubConfiguration: () => ({ appId: '12', privateKey: 'synthetic-only' }) }));
 vi.mock('../../lib/publishing/cloudflare-oauth', () => ({ cloudflareClient: async () => mocks.cloudflare }));
 vi.mock('../../lib/publishing/providers.mjs', async importOriginal => ({ ...await importOriginal<object>(), githubInstallationClient: async () => mocks.github, publishTree: mocks.push }));
-vi.mock('../../lib/publishing/source-tree', () => ({ publicationSourceTree: mocks.source, freezePublicationRenderer: mocks.freezeRenderer }));
+vi.mock('../../lib/publishing/source-tree', () => ({ publicationSourceTree: mocks.source, freezePublicationRenderer: mocks.freezeRenderer, publicationRendererDigest: async () => undefined }));
 const fonts = vi.hoisted(() => ({ freeze: vi.fn() }));
 const fontPlan = { render_version: 1, families: [], google_css_url: null, service_stylesheets: [] };
 // Publications freeze theme fonts from Google; tests never reach the network.

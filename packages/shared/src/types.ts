@@ -2036,7 +2036,7 @@ export interface DeployJob {
   waiting_for_job_id?: string | null;
   /** Actual HTML work reported by the frozen publication renderer, not an estimate. */
   seo_report?: { version: number; publication_id: string; artifact_sha256?: string; artifact_tree_sha256: string; source_sha256: string; configuration_sha256: string; checked_pages: number; passed: boolean; error_count: number; warning_count: number; errors: Array<{ code: string; url: string; source: { file: string; line: number; field?: string; block_id?: string; page_id?: string }; message: string; remediation: string }>; warnings: Array<{ code: string; url: string; source: { file: string; line: number; field?: string; block_id?: string; page_id?: string }; message: string; remediation: string }> };
-  render_report?: { format: 1; mode: 'full' | 'partial'; rendered: number; reused: number; total: number; removed: number; reason: string };
+  render_report?: { format: 1; mode: 'full' | 'partial'; rendered: number; reused: number; total: number; removed: number; reason: string; cache?: { read?: string; save?: string; encoding?: string; transfer?: string; transfer_reason?: string; storage?: string; read_bytes?: number; stored_bytes?: number; decoded_bytes?: number; retained_routes?: number; omitted_routes?: number; invalidations?: string[]; inputs?: { renderer: string; globals: string; environment: string } } };
   /** Last completed CMS checkpoint, excluding time waiting on the customer's build provider. */
   coordinator?: { phase: string; duration_ms: number; updated_at: string };
   /** Last queue observation; scheduled recovery only wakes abandoned chains. */

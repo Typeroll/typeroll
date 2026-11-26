@@ -4,9 +4,11 @@ import { publicationContentFiles, stableJson } from '../../../../../scripts/fixt
 import { mapPublicationParts } from './parallel';
 import { digest } from './providers.mjs';
 import { getStore } from '../datastore';
+import { rendererSourceDigest } from '../../../../site-template/src/lib/publication-render-identity.mjs';
 
 interface PublicationTemplate { format: string; version: string; files: Record<string, string> }
 const templates = new Map<string, PublicationTemplate>();
+let rendererIdentity: Promise<string> | undefined;
 
 /**
  * Reads this release's frozen renderer (scripts/build-static-publication-template.mjs).
@@ -20,7 +22,7 @@ let loadBundledTemplate: () => Promise<string> = async () => {
 };
 
 export function setPublicationTemplateLoader(loader: () => Promise<string>): void {
-  loadBundledTemplate = loader;
+  loadBundledTemplate = loader; rendererIdentity = undefined;
 }
 
 /** Keep each renderer immutable across process restarts and later Core upgrades. */
@@ -77,4 +79,25 @@ export async function publicationSourceTree(publication: any): Promise<Record<st
   const files = { ...template.files, ...content };
   const manifest = { format_version: 1, files: Object.fromEntries(Object.entries(files).sort(([a], [b]) => a < b ? -1 : 1).map(([name, content]) => [name, digest(content)])) };
   return { ...files, 'publication-manifest.json': `${JSON.stringify(manifest, null, 2)}\n` };
+}
+
+/** Read-only identity of this release's renderer; does not freeze a template or start a build. */
+export function currentPublicationRendererDigest(): Promise<string> {
+  if (rendererIdentity) return rendererIdentity;
+  const pending = (async () => {
+    const template = JSON.parse(await loadBundledTemplate()) as PublicationTemplate;
+    if (template.format !== 'typeroll-publication-template' || !template.files?.['scripts/build.mjs'] || !template.files['package-lock.json'])
+      throw new Error('Invalid bundled publication renderer');
+    return rendererSourceDigest(Object.fromEntries(Object.entries(template.files).map(([name, value]) => [name, digest(value)])));
+  })();
+  rendererIdentity = pending;
+  void pending.catch(() => { if (rendererIdentity === pending) rendererIdentity = undefined; });
+  return pending;
+}
+
+/** Immutable historical renderer identity, without creating a missing historical template. */
+export async function publicationRendererDigest(coreCommit: string): Promise<string> {
+  if (coreCommit === process.env.TYPEROLL_SOURCE_SHA) return currentPublicationRendererDigest();
+  const template = await templateFor(coreCommit);
+  return rendererSourceDigest(Object.fromEntries(Object.entries(template.files).map(([name, value]) => [name, digest(value)])));
 }

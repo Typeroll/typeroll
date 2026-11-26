@@ -9,13 +9,16 @@ import { readSnapshot } from './publication-snapshot';
 import { captureImpact, compareImpact, legacyBaseline, withImpactOrigins, type BaselineUnavailableReason, type ImpactSnapshot } from './impact';
 import { digest } from './providers.mjs';
 import { attributeConfigurationChanges } from './impact-attribution';
+import { forecastPublicationBuild } from './build-forecast';
+import { publicationRendererDigest } from './source-tree';
 
 /** The addresses a publication's fingerprint records. */
 export const publicationImpactOrigins = (siteUrl: string, domains: DomainConfiguration, organization: OrganizationDomains) =>
   ({ website: siteUrl, media: domains.desired.media_host ?? organization.media_host ?? null, media_path_prefix: domains.desired.media_path_prefix });
 
 export async function capturePublicationImpact(frozen: any, orgId: string, siteId: string, domains: DomainConfiguration, organization: OrganizationDomains, media: any[]) {
-  return captureImpact({ ...frozen, impact_origins: publicationImpactOrigins(frozen.site_url, domains, organization) }, orgId, siteId, media);
+  const rendererDigest = await publicationRendererDigest(frozen.core_commit).catch(() => undefined);
+  return captureImpact({ ...frozen, ...(rendererDigest ? { renderer_digest: rendererDigest } : {}), impact_origins: publicationImpactOrigins(frozen.site_url, domains, organization) }, orgId, siteId, media);
 }
 
 /** A domain change's fingerprint: the content it republishes, at the addresses it is built for. */
@@ -61,7 +64,10 @@ export async function previewPublicationImpact(orgId: string, siteId: string, ve
   const target = await store.getDoc<any>(`${paths.site(orgId, siteId)}/publishing_targets/${versionId}`);
   const reference = target?.last_publication;
   const baseline = await verifiedBaseline(orgId, siteId, versionId, reference);
-  if (!baseline.snapshot) return compareImpact(null, { protocol: 2, org_id: orgId, site_id: siteId, version_id: versionId, core_commit: '', entries: [] }, true, baseline.reason);
+  if (!baseline.snapshot) {
+    const impact = compareImpact(null, { protocol: 2, org_id: orgId, site_id: siteId, version_id: versionId, core_commit: '', entries: [] }, true, baseline.reason);
+    return { ...impact, build_forecast: await forecastPublicationBuild(orgId, siteId, versionId, impact) };
+  }
   const [site, savedDomains, organization, group, resolved, runtime, media] = await Promise.all([
     store.getDoc<Site>(paths.site(orgId, siteId)), getSiteDomains(orgId, siteId), getOrganizationDomains(orgId), siteHostingGroup(orgId, siteId),
     resolvePublicationVersion(orgId, siteId, versionId), publicationRuntime(orgId, siteId, versionId), store.listDocs<any>(paths.media(orgId, siteId)),
@@ -81,5 +87,5 @@ export async function previewPublicationImpact(orgId: string, siteId: string, ve
   await attributeConfigurationChanges(orgId, siteId, baseline.publication?.published_at, impact).catch(error => {
     console.warn(JSON.stringify({ event: 'publication_impact_attribution_failed', org_id: orgId, site_id: siteId, error: error instanceof Error ? error.name : 'unknown' }));
   });
-  return { ...impact, baseline_publication_id: baseline.publication_id, compared_at: new Date().toISOString() };
+  return { ...impact, build_forecast: await forecastPublicationBuild(orgId, siteId, versionId, impact), baseline_publication_id: baseline.publication_id, compared_at: new Date().toISOString() };
 }
