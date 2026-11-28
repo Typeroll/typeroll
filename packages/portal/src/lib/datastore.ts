@@ -100,6 +100,9 @@ export interface ReadWriteStore {
   listDocsCached?<T = unknown>(collectionPath: string, opts?: { filters?: Filter[]; limit?: number; startAfterId?: string }): Promise<Array<T & { id: string }>>;
   /** Coherent content reads; writes remain outside the snapshot. */
   readSnapshot?<T>(root: string, work: () => Promise<T>): Promise<T>;
+  /** Reuse a pure snapshot projection only after validating it with its owner.
+   * The key must include all inputs outside root; no HTML or access decisions. */
+  readSnapshotCached?<T>(root: string, key: string, work: () => Promise<T>): Promise<T>;
   getDoc<T = unknown>(path: string): Promise<(T & { id: string }) | null>;
   setDoc(path: string, data: Record<string, any>): Promise<void>;
   /** Atomically create a document only when it does not already exist. */

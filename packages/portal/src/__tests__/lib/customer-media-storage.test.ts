@@ -198,19 +198,30 @@ describe('preview media route', () => {
 });
 
 describe('preview images stored without dimensions', () => {
-  it('reads the width from the preparation receipt once, keeps it and needs no new preparation', async () => {
+  it('serves the original before legacy width hydration finishes, then reuses prepared variants', async () => {
     await connect();
     const sha = 'e'.repeat(64);
     await getStore().setDoc(`${paths.media('org', 'site')}/house`, { filename: 'house.png', mime_type: 'image/png', sha256: sha,
       cdn_url: 'https://cms.example.com/api/sites/site/media/house/content',
       storage: { provider: 'organization_r2', account_id: account, bucket: 'customer-private', key: 'private/media/abcdefghij/house.png', state: 'ready' },
       preparation: { state: 'ready', source_sha256: sha, recipe: 'v2' } });
+    let release!: () => void;
+    const blocked = new Promise<void>(resolve => { release = resolve; });
     const send = vi.spyOn(S3Client.prototype, 'send').mockImplementation(async (command: unknown) => {
       expect((command as GetObjectCommand).input.Key).toBe(`private/media/abcdefghij/prepared/v2/${sha}/original.webp.receipt.json`);
+      await blocked;
       return { Body: { transformToByteArray: async () => Buffer.from(JSON.stringify({ source_sha256: sha, recipe_sha256: 'r', width: 1536, format: 'webp', sha256: 'f'.repeat(64), size_bytes: 1 })) } };
     });
     const { withPreviewResponsiveImages } = await import('../../lib/preview-media');
+    const { withBackgroundTasks } = await import('../../lib/runtime/background-tasks');
+    const background: Promise<unknown>[] = [];
     const src = '/preview/site/media/house?token=tok';
+    const first = await withBackgroundTasks(task => background.push(task), () =>
+      withPreviewResponsiveImages(`<img src="${src}" alt="House" loading="lazy" />`, 'org', 'site', 'tok'));
+    expect(first).toContain(`src="${src}"`);
+    expect(first).not.toContain('variant=');
+    release();
+    await Promise.all(background);
     const html = await withPreviewResponsiveImages(`<img src="${src}" alt="House" loading="lazy" />`, 'org', 'site', 'tok');
     expect(html).toContain(`${src}&amp;variant=w1024.avif 1024w, ${src}&amp;variant=original.avif 1536w`);
     expect(html).not.toContain('variant=w1920');

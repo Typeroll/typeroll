@@ -61,3 +61,64 @@ it('evicts collection copies across Sites instead of growing isolate memory with
   await stores[0]!.store.listDocsCached('pages');
   expect(stores[0]!.reused).toEqual([false, false]);
 });
+
+it('reuses a pure snapshot projection only while its owner validates the same epoch and content', async () => {
+  const driver = nodeSqliteDriver();
+  let engine = new SqlDocumentEngine(driver);
+  const transport = localTransport(engine);
+  transport.listVersioned = async (...args) => engine.listVersioned(...args);
+  const store = new SqlStore(transport, () => 'id');
+  let projections = 0;
+  const read = (key = 'main') => store.readSnapshotCached('versions', key, async () => {
+    projections++;
+    return store.listDocs<{ title: string }>('versions/main/pages');
+  });
+  await store.setDoc('versions/main/pages/a', { title: 'Original' });
+  const first = await read();
+  first[0]!.title = 'Caller mutation';
+  expect(await read()).toMatchObject([{ title: 'Original' }]);
+  expect(projections).toBe(1);
+  await store.updateDoc('versions/main/pages/a', { title: 'Changed' });
+  expect(await read()).toMatchObject([{ title: 'Changed' }]);
+  expect(projections).toBe(2);
+  await read('different external configuration');
+  expect(projections).toBe(3);
+  engine = new SqlDocumentEngine(driver);
+  await read();
+  expect(projections).toBe(4);
+  await store.deleteDoc('versions/main/pages/a');
+  expect(await read()).toEqual([]);
+  expect(projections).toBe(5);
+  transport.listVersioned = async () => { throw new Error('Owner unavailable'); };
+  await expect(read()).rejects.toThrow('Owner unavailable');
+});
+
+it('retries concurrent snapshot changes and never caches a failed projection', async () => {
+  const engine = new SqlDocumentEngine(nodeSqliteDriver());
+  const transport = localTransport(engine);
+  const store = new SqlStore(transport, () => 'id');
+  await store.setDoc('versions/main/pages/a', { title: 'Before' });
+  let attempts = 0;
+  const result = await store.readSnapshotCached('versions', 'key', async () => {
+    const docs = await store.listDocs<{ title: string }>('versions/main/pages');
+    if (++attempts === 1) await transport.commit([], [{ path: 'versions/main/pages/a', op: 'set', data: { title: 'After' } }]);
+    return docs;
+  });
+  expect(result).toMatchObject([{ title: 'After' }]);
+  expect(attempts).toBeGreaterThan(1);
+  await expect(store.readSnapshotCached('versions', 'failure', async () => { throw new Error('Projection failed'); })).rejects.toThrow('Projection failed');
+  expect(await store.readSnapshotCached('versions', 'failure', async () => 'Retried')).toBe('Retried');
+});
+
+it('keeps snapshot projections read-only and within their root', async () => {
+  const { getStore, setRuntimeStore } = await import('../../lib/datastore');
+  const store = new SqlStore(localTransport(new SqlDocumentEngine(nodeSqliteDriver())), () => 'id');
+  setRuntimeStore(() => store);
+  try {
+    await expect(store.readSnapshotCached('versions', 'write', () => getStore().setDoc('versions/main/pages/a', { title: 'Forbidden' })))
+      .rejects.toThrow('Writes are not allowed');
+    await expect(store.readSnapshotCached('versions', 'outside', () => getStore().getDoc('members/private')))
+      .rejects.toThrow('Read outside publication snapshot');
+    expect(await store.getDoc('versions/main/pages/a')).toBeNull();
+  } finally { setRuntimeStore(null); }
+});

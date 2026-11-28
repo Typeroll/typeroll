@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import type { StoreTransport } from '../store/sql-store';
 
 // Fixed labels only: never put paths, IDs, payloads or credentials in telemetry.
-type Step = 'preview_route' | 'preview_inputs' | 'preview_render' | 'preview_media' | 'preview_fonts' | 'preview_derivation' | 'schema' | 'authentication' | 'read_page' | 'readback' | 'request_body'
+type Step = 'preview_route' | 'preview_inputs' | 'preview_render' | 'preview_media' | 'preview_responsive_media' | 'preview_fonts' | 'preview_derivation' | 'schema' | 'authentication' | 'read_page' | 'readback' | 'request_body'
   | 'content_write' | 'content_validation' | 'draft_write' | 'commit'
   | 'revision' | 'page_write' | 'response'
   | 'store_get' | 'store_getMany' | 'store_list' | 'store_commit'
@@ -64,6 +64,8 @@ export function timedStoreTransport(transport: StoreTransport): StoreTransport {
     get: path => measureRequestStep('store_get', () => transport.get(path)),
     getMany: paths => measureRequestStep('store_getMany', () => transport.getMany(paths)),
     list: (collection, opts) => measureRequestStep('store_list', () => transport.list(collection, opts)),
+    ...(transport.listVersioned ? { listVersioned: (collection: string, opts: Parameters<StoreTransport['list']>[1], known?: string) =>
+      measureRequestStep('store_list', () => transport.listVersioned!(collection, opts, known)) } : {}),
     commit: (preconditions, writes) => measureRequestStep('store_commit', async () => {
       const result = await transport.commit(preconditions, writes);
       if (!result.ok) recordStoreConflict();

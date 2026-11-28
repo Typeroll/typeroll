@@ -86,6 +86,30 @@ async function configureEngine() {
 }
 const imageDoc = (hash: string) => ({ mime_type: 'image/png', sha256: hash.repeat(64), storage: { provider: 'organization_r2', state: 'ready', key: `private/${hash}` } });
 
+it('captures missing dimensions from the completed preparation without another image build', async () => {
+  const store = await configureEngine();
+  const { S3Client } = await import('../../lib/net/s3');
+  const { sealCredentials } = await import('../../lib/publishing/connections');
+  vi.stubEnv('INTEGRATIONS_SECRET_KEY', 'synthetic-preparation-encryption-key-32chars');
+  const send = vi.spyOn(S3Client.prototype, 'send').mockResolvedValue({ Body: {
+    transformToByteArray: async () => Buffer.from(JSON.stringify({ source_sha256: 'b'.repeat(64), format: 'webp', width: 1536 })),
+  } });
+  try {
+    await store.updateDoc(connectionPath('org', 'cloudflare'), { encrypted_credentials: sealCredentials('org', 'cloudflare', {
+      access_key_id: 'synthetic-key', secret_access_key: 'synthetic-secret',
+    }) });
+    await store.setDoc(`${paths.media('org', 'site')}/new`, { ...imageDoc('b'), storage: {
+      ...imageDoc('b').storage, account_id: 'a'.repeat(32), bucket: 'private',
+    } });
+    await requestMediaPreparation('org', 'site', 'new'); await releaseDelay(); await runPendingMediaPreparation('org');
+    mocks.completed.mockResolvedValue({ task: {}, files: {} });
+    await runPendingMediaPreparation('org');
+    expect(await store.getDoc(`${paths.media('org', 'site')}/new`)).toMatchObject({ prepared_width: 1536, preparation: { state: 'ready' } });
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(mocks.enqueue).toHaveBeenCalledTimes(1);
+  } finally { send.mockRestore(); vi.unstubAllEnvs(); }
+});
+
 it('an automatic upload selects only requested images, not a legacy library without readiness flags', async () => {
   const store = await configureEngine();
   for (let i = 0; i < 317; i++) await store.setDoc(`${paths.media('org', 'site')}/legacy-${i}`, imageDoc('a'));

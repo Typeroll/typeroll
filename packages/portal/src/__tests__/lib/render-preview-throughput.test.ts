@@ -45,21 +45,35 @@ it('revalidates the real sharded preview route without retransferring unchanged 
   const { SqlDocumentEngine } = await import('../../lib/store/sql-engine');
   const { nodeSqliteDriver } = await import('../../lib/store/node-sqlite');
   const { localTransport } = await import('../../lib/store/sql-store');
-  const { ShardedStore } = await import('../../lib/store/sharded-store');
+  const { cloudflareStore } = await import('../../lib/runtime/cloudflare-store');
   const { setRuntimeStore } = await import('../../lib/datastore');
   const engines = new Map<string, InstanceType<typeof SqlDocumentEngine>>();
   const transfers: number[] = [];
-  const store = new ShardedStore({ transport: name => {
-    if (!engines.has(name)) engines.set(name, new SqlDocumentEngine(nodeSqliteDriver()));
-    const transport = localTransport(engines.get(name)!);
-    const read = transport.listVersioned!;
-    transport.listVersioned = async (...args) => {
-      const result = await read(...args);
-      if (args[0].endsWith('/pages')) transfers.push(JSON.stringify(result).length);
-      return result;
-    };
-    return transport;
-  } }, () => crypto.randomUUID());
+  // Exercise the deployed composition, including the timing decorator and
+  // request-local Durable Object stubs, not just the uninstrumented store.
+  const store = cloudflareStore({ STORE: {
+    jurisdiction: name => { expect(name).toBe('eu'); return namespace; },
+    idFromName: name => name,
+    get: name => namespace.get(name),
+  } });
+  const namespace: import('../../lib/runtime/cloudflare-store').DurableObjectNamespaceLike = {
+    jurisdiction: () => namespace,
+    idFromName: (name: string) => name,
+    get: (name: unknown) => {
+      const key = String(name);
+      if (!engines.has(key)) engines.set(key, new SqlDocumentEngine(nodeSqliteDriver()));
+      const transport = localTransport(engines.get(key)!);
+      for (const method of ['list', 'listVersioned'] as const) {
+        const read = transport[method]!;
+        (transport as any)[method] = async (...args: any[]) => {
+          const result = await (read as any)(...args);
+          if (args[0].endsWith('/pages')) transfers.push(JSON.stringify(result).length);
+          return result;
+        };
+      }
+      return transport;
+    },
+  };
   const org = 'cached-preview-org', site = 'cached-preview-site', version = MAIN_VERSION_ID;
   setRuntimeStore(() => store);
   try {

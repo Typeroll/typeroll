@@ -47,6 +47,36 @@ function forgetPreviewEntry(entry: object | undefined) {
 
 export class SqlStore implements ReadWriteStore {
   private readonly previewLists = new Map<string, { token: string; docs: StoredDoc[]; bytes: number }>();
+  private readonly previewSnapshots = new Map<string, { token: string; value: unknown; at: number }>();
+
+  /** Cache pure version projections, validated on every request. The owner's
+   * epoch in listVersioned also invalidates copies after object recreation.
+   * Shares the raw-collection cache's isolate-wide memory budget. */
+  async readSnapshotCached<T>(root: string, key: string, work: () => Promise<T>): Promise<T> {
+    if (!this.transport.listVersioned) return this.readSnapshot(root, work);
+    const cacheKey = JSON.stringify([root, key]);
+    for (let attempt = 0; attempt < SNAPSHOT_ATTEMPTS; attempt++) {
+      const previous = this.previewSnapshots.get(cacheKey);
+      // The version collection contains small metadata, never Page bodies.
+      const { token } = await this.transport.listVersioned(root, { limit: 1 }, previous?.token);
+      if (previous?.token === token && Date.now() - previous.at < 15 * 60_000) return structuredClone(previous.value) as T;
+      forgetPreviewEntry(previous);
+      const value = await this.readSnapshot(root, work);
+      if ((await this.transport.listVersioned(root, { limit: 1 }, token)).token !== token) continue;
+      const bytes = JSON.stringify(value).length * 2;
+      if (bytes <= 8 * 1024 * 1024) {
+        while (this.previewSnapshots.size >= 16) forgetPreviewEntry(this.previewSnapshots.values().next().value);
+        while (previewListBudget.size && (previewListBudget.size >= 64 || previewListBytes + bytes > 16 * 1024 * 1024)) forgetPreviewEntry(previewListBudget.keys().next().value);
+        forgetPreviewEntry(this.previewSnapshots.get(cacheKey));
+        const entry = { token, value: structuredClone(value), at: Date.now() };
+        this.previewSnapshots.set(cacheKey, entry);
+        previewListBytes += bytes;
+        previewListBudget.set(entry, { bytes, evict: () => { if (this.previewSnapshots.get(cacheKey) === entry) this.previewSnapshots.delete(cacheKey); } });
+      }
+      return value;
+    }
+    throw new ConflictError(root);
+  }
   /** Bounded per-store cache of raw collections, not HTML or authorization.
    * Every hit is validated by the storage owner, never a time-based stale hit. */
   async listDocsCached<T = unknown>(collection: string, opts?: Parameters<StoreTransport['list']>[1]): Promise<Array<T & { id: string }>> {

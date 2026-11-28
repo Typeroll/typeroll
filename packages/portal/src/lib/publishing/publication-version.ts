@@ -7,11 +7,22 @@ import { publicationLiveContent } from './publication-snippets';
 
 /** Resolve branch inheritance before freezing content; this internal result is not a public export. */
 export async function resolvePublicationVersion(orgId: string, siteId: string, versionId: string) {
-  const store = getStore();
-  if (!store.readSnapshot) throw new Error('Publication requires a consistent datastore snapshot');
-  const resolved = await store.readSnapshot(`${paths.site(orgId, siteId)}/versions`, () => resolveVersion(orgId, siteId, versionId));
+  const resolved = await readPublicationVersion(orgId, siteId, versionId, async resolved => resolved);
   // Live snippets live outside the versions: read after the snapshot, with where their live files are.
   return { ...resolved, ...await publicationLiveContent(orgId, siteId) };
+}
+
+/** A pure projection of consistent version content. Only previews opt into
+ * validated reuse; publications always capture a fresh snapshot. */
+export async function readPublicationVersion<T>(orgId: string, siteId: string, versionId: string,
+  project: (resolved: Awaited<ReturnType<typeof resolveVersion>>) => Promise<T>, cacheKey?: string): Promise<T> {
+  const store = getStore();
+  if (!store.readSnapshot) throw new Error('Publication requires a consistent datastore snapshot');
+  const root = `${paths.site(orgId, siteId)}/versions`;
+  const work = async () => project(await resolveVersion(orgId, siteId, versionId));
+  return cacheKey && store.readSnapshotCached
+    ? store.readSnapshotCached(root, JSON.stringify([versionId, cacheKey]), work)
+    : store.readSnapshot(root, work);
 }
 
 async function resolveVersion(orgId: string, siteId: string, versionId: string) {

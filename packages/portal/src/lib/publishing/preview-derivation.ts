@@ -19,7 +19,8 @@ import { paths } from '@typeroll/shared';
 import { createHash } from 'node:crypto';
 import { getStore } from '../datastore';
 import { projectStaticPublication } from '../../../../../scripts/lib/static-publication.mjs';
-import { resolvePublicationVersion } from './publication-version';
+import { readPublicationVersion } from './publication-version';
+import { publicationLiveContent } from './publication-snippets';
 import { publicationRuntime } from './runtime-projection';
 import { buildExtensionRuntimeSnapshot } from '../extensions/runtime-snapshot';
 import { DerivationError, runBuildDerivations, stableDigest, type DerivationOutcome, type DerivationProvider } from './build-derivation';
@@ -141,26 +142,37 @@ export async function previewDerivation(
     return failed(new DerivationError(`The publication runtime cannot be resolved: ${message}`, 'publication'), '', '', derivationApps(providers, extensions));
   }
   const configDigest = publicationConfigDigest(runtime);
-  const [resolved, site] = await Promise.all([
-    resolvePublicationVersion(orgId, siteId, versionId),
+  const [site, live] = await Promise.all([
     store.getDoc<Site>(paths.site(orgId, siteId)),
+    publicationLiveContent(orgId, siteId),
   ]);
-  // The projection a publication makes: published pages and public fields only.
-  // The site URL does not reach pages, so the content digest equals the publication's.
-  let frozen: Record<string, any>;
+  // Resolve external inputs afresh; only the pure version projection is cached.
+  // The owner validates its epoch/revision on every hit, including branch bases,
+  // tombstones and deletions. No ticket, rendered HTML or auth result is retained.
+  let projection: { content?: { version_id: string; pages: any[]; content_types: any[] }; revision: string };
   try {
-    frozen = projectStaticPublication(
-    { ...resolved, site: { ...site, domain: site?.domain || 'preview.typeroll.invalid' }, media: [], forms: runtime.forms, extensions: runtime.extensions.installations, publicRuntime: runtime },
-    { siteUrl: 'https://preview.typeroll.invalid', coreCommit: /^[a-f0-9]{40}$/.test(process.env.TYPEROLL_SOURCE_SHA ?? '') ? process.env.TYPEROLL_SOURCE_SHA! : '0'.repeat(40), publishedAt: new Date(0).toISOString(), noindex: true, coreBlockTypes: CORE_BLOCK_TYPES },
-    );
+    projection = await readPublicationVersion(orgId, siteId, versionId, async resolved => {
+      let frozen: Record<string, any>;
+      try {
+        frozen = projectStaticPublication(
+          { ...resolved, ...live, site: { ...site, domain: site?.domain || 'preview.typeroll.invalid' }, media: [], forms: runtime.forms, extensions: runtime.extensions.installations, publicRuntime: runtime },
+          { siteUrl: 'https://preview.typeroll.invalid', coreCommit: /^[a-f0-9]{40}$/.test(process.env.TYPEROLL_SOURCE_SHA ?? '') ? process.env.TYPEROLL_SOURCE_SHA! : '0'.repeat(40), publishedAt: new Date(0).toISOString(), noindex: true, coreBlockTypes: CORE_BLOCK_TYPES },
+        );
+      } catch (error) {
+        throw new DerivationError(`Content cannot be frozen for publication: ${error instanceof Error ? error.message : String(error)}`, 'publication');
+      }
+      const content = { version_id: resolved.versionId, pages: frozen.pages, content_types: frozen.contentTypes };
+      // Sites without deriving apps retain only the digest, even when their
+      // complete Page library would exceed the isolate's cache budget.
+      return { ...(providers.length ? { content } : {}), revision: publicationContentDigest(content) };
+    }, stableDigest({ site, live, runtime, derive: providers.length > 0, source: process.env.TYPEROLL_SOURCE_SHA ?? '' }));
   } catch (error) {
-    // Content a publication would refuse to freeze cannot be derived either: say why.
-    return failed(new DerivationError(`Content cannot be frozen for publication: ${error instanceof Error ? error.message : String(error)}`, 'publication'), '', configDigest, derivationApps(providers, runtime.extensions));
+    if (!(error instanceof DerivationError)) throw error;
+    return failed(error, '', configDigest, derivationApps(providers, runtime.extensions));
   }
-  const content = { version_id: resolved.versionId, pages: frozen.pages, content_types: frozen.contentTypes };
-  const contentRevision = publicationContentDigest(content);
+  const { content, revision: contentRevision } = projection;
   const apps = derivationApps(providers, runtime.extensions);
-  const key = stableDigest({ org: orgId, site: siteId, version: resolved.versionId, content: contentRevision, config: configDigest, apps });
+  const key = stableDigest({ org: orgId, site: siteId, version: versionId, content: contentRevision, config: configDigest, apps });
 
   const hit = cache.get(key);
   if (hit && Date.now() - hit.at < CACHE_TTL_MS) return { ...(await hit.value), reused: true };
@@ -168,7 +180,7 @@ export async function previewDerivation(
   const value = (async (): Promise<PreviewDerivation> => {
     try {
       const outcome = await runBuildDerivations(
-        { org_id: orgId, site_id: siteId, version_id: resolved.versionId, content_digest: contentRevision, content, config_digest: configDigest, provider_version: '' },
+        { org_id: orgId, site_id: siteId, version_id: versionId, content_digest: contentRevision, content, config_digest: configDigest, provider_version: '' },
         providers,
       );
       const receipt = derivationReceipt(contentRevision, configDigest, apps, outcome);

@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.3.54 (candidate, MCP 0.45.153)
+
+- Preserve reviewed linked-text formatting through durable application queues
+  (Extension runtime 0.48.0), including protected retries and receipt recovery.
+- Detect aged upstream HTML when the outer cache reports DYNAMIC or BYPASS.
+  Bound path-specific recovery and report the stale layer without accepting a
+  removed page, waiting for the full timeout or starting another build.
+- Restore owner-validated preview collection caching through the production
+  timing transport. Reuse frozen content revisions only after validating the
+  storage owner's epoch and current content, with bounded shared memory.
+- Read referenced preview media concurrently with bounded fan-out. Move legacy
+  image-width receipt hydration off the Worker response path and capture widths
+  when background preparation completes. Serve originals while metadata is
+  unavailable, and measure the responsive-media stage separately.
+
 ## 0.3.53 (candidate, MCP 0.45.152)
 
 - Reuse HTML across Core provenance-only updates when frozen rendering source,

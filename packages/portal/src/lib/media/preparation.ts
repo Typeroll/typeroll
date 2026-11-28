@@ -157,8 +157,17 @@ export async function runPendingMediaPreparation(org?: string): Promise<boolean>
         if (!result) { pending = true; continue; }
         // A completion from before a rollout keeps its actual recipe identity.
         const completedRecipe = item.recipe ?? 'v1';
-        for (const entry of item.entries ?? []) await store.compareAndUpdateDoc<Media>(`${paths.media(item.org, item.site)}/${entry.id}`,
-          value => value.sha256 === entry.sha256, { preparation_pending: completedRecipe !== MEDIA_RECIPE_VERSION, preparation: { state: 'ready', source_sha256: entry.sha256, recipe: completedRecipe } });
+        const prepared: Array<Media & { id: string }> = [];
+        for (const entry of item.entries ?? []) {
+          const preparation = { state: 'ready' as const, source_sha256: entry.sha256, recipe: completedRecipe };
+          const current = await store.compareAndUpdateDoc<Media>(`${paths.media(item.org, item.site)}/${entry.id}`,
+            value => value.sha256 === entry.sha256, { preparation_pending: completedRecipe !== MEDIA_RECIPE_VERSION, preparation });
+          if (current) prepared.push({ ...current, preparation });
+        }
+        // Keep receipt reads off the first preview's critical path, including
+        // imports whose original dimensions were not recorded at upload time.
+        const { hydratePreparedWidths } = await import('../publishing/media-storage');
+        await hydratePreparedWidths(item.org, item.site, prepared);
         // Files uploaded while this round ran wait for a quiet window too;
         // without new uploads the job finishes on the next poll.
         const finishedAt = Date.now();

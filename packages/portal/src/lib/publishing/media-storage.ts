@@ -193,6 +193,35 @@ export async function preparedSourceWidth(orgId: string, siteId: string, media: 
   return width;
 }
 
+const widthHydrations = new WeakMap<ReturnType<typeof getStore>, Map<string, Promise<number | null>>>();
+
+/** Optional metadata repair, shared by preparation completion and legacy
+ * preview maintenance. Never prepares image bytes; preview callers detach it.
+ * Concurrent previews of the same immutable image share the in-flight read. */
+export async function hydratePreparedWidths(orgId: string, siteId: string, media: Array<Media & { id: string }>): Promise<void> {
+  const store = getStore();
+  let pending = widthHydrations.get(store);
+  if (!pending) { pending = new Map(); widthHydrations.set(store, pending); }
+  const missing = media.filter(item => !item.width && !item.prepared_width && item.storage?.provider === 'organization_r2' &&
+    item.storage.state === 'ready' && item.sha256 && item.preparation?.state === 'ready' &&
+    item.preparation.recipe === PREPARED_RECIPE && item.preparation.source_sha256 === item.sha256);
+  // A large legacy library or unavailable receipt store cannot hold a
+  // preparation poll/maintenance task indefinitely. Later views retry gaps.
+  const deadline = Date.now() + 20_000;
+  for (let offset = 0; offset < missing.length && Date.now() < deadline; offset += 4) {
+    await Promise.all(missing.slice(offset, offset + 4).map(item => {
+      const key = JSON.stringify([orgId, siteId, item.id, item.sha256]);
+      let task = pending!.get(key);
+      if (!task) {
+        task = preparedSourceWidth(orgId, siteId, item).catch(() => null);
+        pending!.set(key, task);
+        void task.finally(() => { if (pending!.get(key) === task) pending!.delete(key); });
+      }
+      return task;
+    }));
+  }
+}
+
 /**
  * A short-lived signed URL for a private media item, or for one of its
  * prepared variants (`w640.avif`, `original.webp`). `cacheSeconds` lets the

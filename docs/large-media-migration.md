@@ -112,6 +112,28 @@ return its small receipt immediately. Update existing shared engines for the
 new final-checkpoint policy; frozen older renderers keep their own media behavior.
 
 
+## Preview metadata and revision reuse
+
+Core 0.3.53 forwards `listVersioned` through `timedStoreTransport`, so the
+production Durable Object composition preserves raw preview collection reuse.
+The same owner token (object epoch plus sequence) validates pure frozen-content
+projections before reuse. Version, Site, Organization and all external projection
+inputs remain in the key. The cache shares the collection cache's 16 MiB isolate
+budget, refuses entries above 8 MiB, and expires projections after 15 minutes;
+expiry never substitutes for owner validation. An unavailable owner fails the
+read rather than serving stale content. Authentication and rendered HTML remain
+outside these caches. Publications always capture a fresh consistent snapshot.
+
+Responsive preview augmentation reads each referenced media record once, at most
+eight at a time. `preview_responsive_media` covers that final stage independently
+of HTML rendering. Missing legacy widths use the original image for the current
+response. `waitUntil` retains bounded receipt hydration after the response, at
+most four reads at a time with a 20-second admission budget; local tools await
+the same maintenance. Concurrent previews share in-flight width reads. The same
+best-effort hydration runs at preparation completion. Receipt failures leave
+originals usable, and later views retry. Writes compare the immutable source
+hash, so a late receipt cannot overwrite metadata for replacement bytes.
+
 ## Customer-owned static verification
 
 The trusted supervisor runs a separate `static_verification` task after the
