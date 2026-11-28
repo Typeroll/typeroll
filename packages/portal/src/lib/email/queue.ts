@@ -13,6 +13,7 @@ export class EmailQueueError extends Error {
 }
 export interface QueueEntryInput {
   id: string; to: string; subject: string; text: string;
+  format?: 'text' | 'linked_text';
   /** Relative, manifest-declared POST route. No caller-supplied origin. */
   preparation?: { path: string; reference: string };
 }
@@ -33,6 +34,7 @@ interface Group {
   lease_owner?: string | null; lease_until?: number;
 }
 interface Intent { to: string; subject: string; text: string; idempotency_key: string; delivery_group: string; substitutions: Record<string, string>;
+  format?: 'text' | 'linked_text';
   scope: MailScope; queue_id: string; entry_id: string }
 export interface QueueDependencies {
   store: ReadWriteStore;
@@ -66,13 +68,15 @@ function copyEntry(value: unknown): QueueEntry {
   const item = value as QueueEntryInput | null;
   if (!item || !identifier(item.id) || typeof item.to !== 'string' || item.to.length > 254 || !/^[^\s@,;\r\n]+@[^\s@,;\r\n]+\.[^\s@,;\r\n]+$/.test(item.to) ||
       typeof item.subject !== 'string' || !item.subject.trim() || item.subject.length > 200 || /[\r\n]/.test(item.subject) ||
-      typeof item.text !== 'string' || !item.text.trim() || item.text.length > 32_000) throw new EmailQueueError('Invalid queue recipient or reviewed message');
+      typeof item.text !== 'string' || !item.text.trim() || item.text.length > 32_000 ||
+      (item.format !== undefined && !['text', 'linked_text'].includes(item.format))) throw new EmailQueueError('Invalid queue recipient or reviewed message');
   if (item.preparation && (!/^\/[A-Za-z0-9_/-]{1,150}$/.test(item.preparation.path) || item.preparation.path.includes('..') || !identifier(item.preparation.reference)))
     throw new EmailQueueError('Invalid app preparation reference');
   const placeholders = (item.subject + item.text).match(/\{\{[^}]*\}\}/g) ?? [];
   if (placeholders.some(value => !['{{link}}', '{{expires}}', '{{unsubscribe_url}}'].includes(value))) throw new EmailQueueError('Only dispatch-time link, expires and unsubscribe_url placeholders may remain');
   if (!item.preparation && placeholders.some(value => value !== '{{unsubscribe_url}}')) throw new EmailQueueError('A private link requires an app preparation route');
   return { id: item.id, to: item.to.trim().toLowerCase(), subject: item.subject, text: item.text,
+    ...(item.format ? { format: item.format } : {}),
     ...(item.preparation ? { preparation: { ...item.preparation } } : {}), status: 'queued' };
 }
 
@@ -223,7 +227,7 @@ export class ApplicationEmailQueues {
         // Revalidate the app's private grant after a pause or a quota delay,
         // but never replace the already frozen message or generate a new link.
         const values = { ...prepared.values, unsubscribe_url: intent.substitutions.unsubscribe_url! };
-        if (interpolate(entry.subject, values) !== intent.subject || interpolate(entry.text, values) !== intent.text) {
+        if (interpolate(entry.subject, values) !== intent.subject || interpolate(entry.text, values) !== intent.text || entry.format !== intent.format) {
           if (await this.updateEntry(scope, id, entry.id, current => ({ ...current, status: 'excluded', error: 'Prepared private values changed; review this delivery instead of replacing its message.' }), owner)) await this.wake(scope, id, now);
           return;
         }
@@ -231,7 +235,7 @@ export class ApplicationEmailQueues {
       else {
         const unsubscribe = await this.deps.unsubscribe(scope, q.group, entry.to, key);
         const values: Record<string, string> = { ...prepared.values, unsubscribe_url: unsubscribe };
-        intent = { to: entry.to, subject: interpolate(entry.subject, values), text: interpolate(entry.text, values), idempotency_key: key, delivery_group: q.group, substitutions: values, scope, queue_id: q.id, entry_id: entry.id };
+        intent = { to: entry.to, subject: interpolate(entry.subject, values), text: interpolate(entry.text, values), ...(entry.format ? { format: entry.format } : {}), idempotency_key: key, delivery_group: q.group, substitutions: values, scope, queue_id: q.id, entry_id: entry.id };
         if (/[\r\n]/.test(intent.subject) || intent.subject.length > 200 || intent.text.length > 32_000) throw new EmailQueueError('Prepared email exceeds the reviewed message limits', 409);
         const sealed = this.deps.seal(JSON.stringify(intent));
         if (!await this.updateEntry(scope, id, entry.id, current => ({ ...current, intent_enc: sealed }), owner)) return;

@@ -45,8 +45,11 @@ export function isCachedStaticMismatch(probe: RecoveryJob['static_probe'], origi
       !(probe.expected_status === 404 || probe.reason === 'content_mismatch')) return false;
   const cache = probe.response_headers?.cf_cache_status;
   const age = Number(probe.response_headers?.age);
+  // The outer response can say DYNAMIC (or MISS/BYPASS) while an upstream
+  // Pages cache supplies aged bytes. Age is evidence of that extra layer;
+  // neither a fresh publication header nor the outer status disproves it.
   return ['HIT', 'REVALIDATED', 'STALE', 'UPDATING'].includes(String(cache)) ||
-    (cache === 'MISS' && Number.isFinite(age) && age > 0);
+    (Number.isFinite(age) && age > 0);
 }
 
 /** The cache-key variant request; replaceable in offline tests. */

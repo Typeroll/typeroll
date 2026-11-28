@@ -24,6 +24,20 @@ it('recognizes the real stale Pages response even when the outer cache reports M
   const patches: Array<Partial<StaticObservation & { origin: string }>> = [{ actual_status: 503 }, { origin: 'https://other.example.com' }, { response_headers: { cf_cache_status: 'MISS' } }, { response_headers: {} }];
   for (const patch of patches) expect(isCachedStaticMismatch({ ...probe, ...patch }, origin)).toBe(false);
 });
+it.each(['DYNAMIC', 'BYPASS', 'MISS', undefined])('recognizes aged upstream HTML behind outer status %s', cache => {
+  const page = { ...probe, route: '/removed-page/', response_headers: { ...(cache ? { cf_cache_status: cache } : {}), age: 2841, publication_id: 'a'.repeat(64) } };
+  expect(isCachedStaticMismatch(page, origin)).toBe(true);
+  for (const age of [0, -1, NaN]) expect(isCachedStaticMismatch({ ...page, response_headers: { cf_cache_status: 'DYNAMIC', age } }, origin)).toBe(false);
+  expect(isCachedStaticMismatch({ ...page, expected_status: 200, reason: 'timeout' }, origin)).toBe(false);
+});
+it('recovers aged DYNAMIC HTML without waiting for the publication timeout or treating the marker as success', async () => {
+  await getStore().updateDoc(jobPath, { static_probe: { ...probe, route: '/removed-page/', response_headers: { cf_cache_status: 'DYNAMIC', age: 2841, publication_id: publication.publication_id } } });
+  await recoverPublicationCache('org', jobPath, publication, origin, connection);
+  for (let i = 0; i < OBSERVATIONS_PER_PURGE; i++) await recoverPublicationCache('org', jobPath, publication, origin, connection);
+  await expect(recoverPublicationCache('org', jobPath, publication, origin, connection)).rejects.toMatchObject({ code: 'publication_cache_refresh_failed', message: expect.stringContaining('fresh cache key returns HTTP 404') });
+  expect(purges()).toHaveLength(1);
+  expect(purges()[0][1].body).toEqual({ prefixes: ['www.example.com/removed-page/'] });
+});
 it('refreshes one path of this site once, observes, then names the upstream cache without a zone purge', async () => {
   await recoverPublicationCache('org', jobPath, publication, origin, connection);
   expect(provider).toHaveBeenCalledWith('/zones/zone/purge_cache', { method: 'POST', body: { prefixes: ['www.example.com' + route] } });

@@ -533,7 +533,12 @@ installation and Site; ordinary Site API keys cannot operate another app's queue
 
 Queue creation takes a stable 16–100 character `id`, `group`, optional
 `daily_limit`, `interval_minutes` and 1–1,000 `entries`. Each entry has a unique
-identifier `id`, one `to`, a complete `subject` and plain `text`. Limits are
+identifier `id`, one `to`, a complete `subject` and `text`. From Core 0.3.54
+(Extension runtime 0.48.0), an optional `format: "linked_text"` renders the same
+safe labelled links as direct email delivery. Omit it for plain text. The format
+is frozen in the reviewed fingerprint and protected delivery intent; changing it
+requires a new review. Apps requiring it must declare runtime `>=0.48.0 <1.0.0`.
+Limits are
 clamped within the Site policy; an approved lower allowance stays in force.
 The complete reviewed entries must fit within 800 KB; split a larger campaign.
 The response is `{queue: {id, fingerprint, status, entries, ...}}`. Retrying the

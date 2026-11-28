@@ -32,6 +32,14 @@ function setup() {
   return { queue, deps, send, receipts, create, start, advance: (ms: number) => { now += ms; }, setTime: (value: string) => { now = Date.parse(value); } };
 }
 describe('shared application email queues', () => {
+  it('pins linked-text formatting in the reviewed queue and protected delivery intent', async () => {
+    const ctx = setup();
+    const q = await ctx.start(1, { entries: [{ ...recipient(0), text: '[Read more](https://example.test/event). {{unsubscribe_url}}', format: 'linked_text' }] });
+    await ctx.queue.run(scope, q.id);
+    expect(ctx.send.mock.calls[0]?.[1]).toMatchObject({ format: 'linked_text', text: expect.stringContaining('[Read more](https://example.test/event)') });
+    await expect(ctx.create(1, { entries: [{ ...recipient(0), format: 'html' }] })).rejects.toMatchObject({ status: 400 });
+    await expect(ctx.create(1, { entries: [{ ...recipient(0), text: '[Read more](https://example.test/event). {{unsubscribe_url}}' }] })).rejects.toMatchObject({ status: 409 });
+  });
   it('previews without preparing links, sending or scheduling and survives a new service instance', async () => {
     const ctx = setup(), draft = await ctx.create();
     expect(draft.status).toBe('draft'); expect(ctx.deps.prepare).not.toHaveBeenCalled(); expect(ctx.send).not.toHaveBeenCalled();
