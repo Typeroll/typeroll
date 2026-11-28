@@ -35,6 +35,8 @@ export interface ConfigurationDetail { path: string; before?: string | null; aft
  * Typeroll release changes them on every site at once.
  */
 export interface ImpactPlatform {
+  /** Actual frozen rendering source, independent of the Core release label. */
+  renderer_digest?: string;
   extension_runtime_version: string | null;
   extension_protocol_version: number | null;
   /** The runtime versions reach the built pages only when the site has installations. */
@@ -62,6 +64,7 @@ export type BaselineUnavailableReason = 'not_published' | 'publication_not_verif
 export const BASELINE_UNAVAILABLE_MESSAGE = 'No verified publication of this version records its saved source, so nothing was compared: changes are unknown, not none, and total 0 with an empty changes list means "not compared". The next publication builds and publishes every saved public page as usual. Publish once to record a baseline for later comparisons; until then a dry run (trigger_deploy with dry_run: true) validates the full build without publishing.';
 
 export interface PublicationImpact {
+  build_forecast?: import('./build-forecast').BuildForecast;
   comparison: 'verified_snapshot' | 'baseline_unavailable';
   /** False when there was no baseline: the counts and changes below are then empty because nothing was compared. */
   changes_known: boolean;
@@ -140,8 +143,8 @@ function detailChanges(id: string, before: Record<string, string>, after: Record
 }
 const EXTENSIONS = { id: 'extensions', name: 'Extensions' } as const;
 
-function platformOf(extensions: any): ImpactPlatform {
-  return { extension_runtime_version: typeof extensions?.runtime_version === 'string' ? extensions.runtime_version : null,
+function platformOf(extensions: any, rendererDigest?: string): ImpactPlatform {
+  return { ...(/^[a-f0-9]{64}$/.test(rendererDigest ?? '') ? { renderer_digest: rendererDigest } : {}), extension_runtime_version: typeof extensions?.runtime_version === 'string' ? extensions.runtime_version : null,
     extension_protocol_version: typeof extensions?.protocol_version === 'number' ? extensions.protocol_version : null,
     extension_installations: Array.isArray(extensions?.installations) ? extensions.installations.length : 0 };
 }
@@ -186,7 +189,7 @@ export function captureImpact(publication: any, orgId: string, siteId: string, m
   }
   entries.sort((a, b) => entryKey(a).localeCompare(entryKey(b)));
   if (new Set(entries.map(entryKey)).size !== entries.length) throw Error('Duplicate impact identity');
-  return { protocol: 2, org_id: orgId, site_id: siteId, version_id: publication.version_id, core_commit: publication.core_commit, entries, platform: platformOf(publication.extensions) };
+  return { protocol: 2, org_id: orgId, site_id: siteId, version_id: publication.version_id, core_commit: publication.core_commit, entries, platform: platformOf(publication.extensions, publication.renderer_digest) };
 }
 
 /**
@@ -231,8 +234,10 @@ export function compareImpact(previous: ImpactSnapshot | null | undefined, curre
   }
   result.total = result.changes.length;
   if (previous.core_commit !== current.core_commit) {
-    result.reasons.push('toolchain_changed');
-    result.platform_changes.push({ id: 'core_commit', name: 'Typeroll Core release', before: previous.core_commit || null, after: current.core_commit || null, affects_output: true });
+    const known = previousPlatform?.renderer_digest && current.platform?.renderer_digest;
+    const affects = !known || previousPlatform?.renderer_digest !== current.platform?.renderer_digest;
+    result.reasons.push(affects ? 'toolchain_changed' : 'core_release_changed');
+    result.platform_changes.push({ id: 'core_commit', name: 'Typeroll Core release', before: previous.core_commit || null, after: current.core_commit || null, affects_output: affects });
   }
   const runtime = (platform: ImpactPlatform | undefined) => platform?.extension_runtime_version == null ? null : `${platform.extension_runtime_version} (protocol ${platform.extension_protocol_version ?? 'unknown'})`;
   if (previousPlatform && current.platform && runtime(previousPlatform) !== runtime(current.platform)) {

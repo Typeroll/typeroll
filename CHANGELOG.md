@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.3.53 (candidate, MCP 0.45.151)
+## 0.3.54 (candidate, MCP 0.45.152)
 
 - Restore owner-validated preview collection caching through the production
   timing transport. Reuse frozen content revisions only after validating the
@@ -9,6 +9,20 @@
   image-width receipt hydration off the Worker response path and capture widths
   when background preparation completes. Serve originals while metadata is
   unavailable, and measure the responsive-media stage separately.
+
+## 0.3.53 (candidate, MCP 0.45.152)
+
+- Reuse HTML across Core provenance-only updates when frozen rendering source,
+  runtime and actual content dependencies are identical. Keep complete output
+  validation, changed-code invalidation and removed-route checks.
+- Compress render caches within the existing transfer budget, bound decoded
+  size, and retain useful routes when a large site exceeds the cache budget.
+  Report read/save state, omitted routes, input invalidation and transfer failures.
+- Add scoped, time-bounded publication cache forecasts to impact API/MCP and the
+  editor. Keep forecasts provisional until actual route dependencies are checked.
+- Reuse media preparation after deletions when every remaining immutable receipt
+  is proven by the previous verified publication. Older cache-transfer engines
+  remain compatible; additional transfer diagnostics use the updated engine.
 
 ## 0.3.52 (candidate, MCP 0.45.151)
 

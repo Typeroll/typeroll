@@ -6,6 +6,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { createStaticPublicationProject, projectStaticPublication, sealPublicationProject } from './lib/static-publication.mjs';
+import { readRenderCache } from '../packages/site-template/src/lib/publication-render-cache.mjs';
 
 test('frozen customer publication validates real Astro HTML, resolved routes, robots and cached pages', async t => {
   const temp = await fs.mkdtemp(path.join(os.tmpdir(), 'tr-seo-publication-'));
@@ -113,11 +114,13 @@ test('frozen customer publication validates real Astro HTML, resolved routes, ro
     assert.match(await fs.readFile(path.join(destination, 'dist/tokens/index.html'), 'utf8'), /--type-rhythm:1.4/);
     // Previous renderer cache format and validator code cannot inherit a pass.
     const cachePath = path.join(destination, '.publication-cache.json');
-    const cache = JSON.parse(await fs.readFile(cachePath, 'utf8'));
+    const cache = readRenderCache(await fs.readFile(cachePath));
+    assert.ok(cache, 'The successful build must write a readable compressed cache');
     await fs.writeFile(cachePath, JSON.stringify({ ...cache, format: 3 }));
     await run();
     const cold = JSON.parse(await fs.readFile(path.join(destination, '.publication-work/render-report.json'), 'utf8'));
     assert.equal(cold.reused, 0); assert.equal(cold.reason, 'no_valid_cache');
+    assert.equal(cold.cache.read, 'format_mismatch');
     const validatorPath = path.join(destination, 'packages/site-template/src/lib/publication-validation.mjs');
     const validator = await fs.readFile(validatorPath, 'utf8');
     await fs.writeFile(validatorPath, validator.replace(/SEO_VALIDATOR_VERSION = (\d+)/, (_, version) => `SEO_VALIDATOR_VERSION = ${Number(version) + 1}`));

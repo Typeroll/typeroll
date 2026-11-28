@@ -70,3 +70,24 @@ it('rejects redirect limits during dry-run source preparation before a provider 
   const redirects = Array.from({ length: 2001 }, (_, i) => ({ from_path: `/old-${i}.html`, to_path: '/new/', status_code: 301 }));
   await expect(publicationSourceTree({ core_commit: commit, redirects })).rejects.toThrow('2001 static');
 });
+
+it('matches the frozen render identity without writing a template during a forecast', async () => {
+  vi.resetModules();
+  const source = await import('../../lib/publishing/source-tree');
+  const bundled = template('renderer with tracked source');
+  const loader = vi.fn(async () => bundled);
+  source.setPublicationTemplateLoader(loader);
+  const store = getStore();
+  const writes = vi.spyOn(store, 'createDocIfMissing');
+  const identity = await source.currentPublicationRendererDigest();
+  expect(identity).toMatch(/^[a-f0-9]{64}$/);
+  expect(await source.currentPublicationRendererDigest()).toBe(identity);
+  expect(loader).toHaveBeenCalledTimes(1);
+  expect(writes).not.toHaveBeenCalled();
+  const { rendererSourceDigest } = await import('../../../../site-template/src/lib/publication-render-identity.mjs');
+  const hashes = Object.fromEntries(Object.entries(JSON.parse(bundled).files as Record<string, string>).map(([name, value]) => [name, createHash('sha256').update(value).digest('hex')]));
+  expect(identity).toBe(rendererSourceDigest({ ...hashes, 'content/pages/home.json': 'changed-page' }));
+  source.setPublicationTemplateLoader(async () => template('changed renderer'));
+  expect(await source.currentPublicationRendererDigest()).not.toBe(identity);
+  writes.mockRestore();
+});

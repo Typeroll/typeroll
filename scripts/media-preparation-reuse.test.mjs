@@ -22,3 +22,17 @@ test('source bytes, aliases, bucket moves, recipe changes and removed retained m
   assert.equal(freezeMediaPreparation(fixture(), previous, true).cursor, 0);
   assert.equal(freezeMediaPreparation(fixture(), fixture(), true).cursor, 0);
 });
+
+test('deleting media preserves preparation for every remaining exact receipt', () => {
+  const previous = fixture();
+  const second = structuredClone(previous.media_manifest.entries[0]); second.public_key = 'media/second'; second.public_path = '/media/second';
+  previous.media_manifest.entries.push(second);
+  previous.media_preparation_scope = mediaPreparationScope(previous);
+  const next = fixture();
+  assert.equal(freezeMediaPreparation(next, previous, true).cursor, 1);
+  assert.equal(freezeMediaPreparation(next, previous, true).reused, true);
+  const missingProof = structuredClone(previous); missingProof.media_preparation_scope.scope = 'invalid';
+  assert.equal(freezeMediaPreparation(next, missingProof, true).reused, false);
+  next.media_manifest.entries[0].aliases[0].key = 'new/alias';
+  assert.equal(freezeMediaPreparation(next, previous, true).reused, false);
+});

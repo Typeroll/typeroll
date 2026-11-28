@@ -612,3 +612,18 @@ Two cases follow:
   and a cache above the zone holds the old response), `origin` (the deployment
   itself still serves it) or `unknown`. `cache_recovery.cf_ray` identifies the
   observed response. Retry verification of the same job later; do not rebuild.
+
+### Build cache forecast and diagnostics (Core 0.3.53)
+
+`get_publication_impact.build_forecast` reports `mode: full | automatic | unknown`,
+fixed `reasons`, cache state and optional `stored_bytes`. `automatic` means a
+compatible cache is available; it is not a guarantee of fewer rendered routes.
+`reuse_verified` remains false until the actual build checks dependencies.
+
+`job.render_report.cache` reports read/save state, encoding, stored/decoded bytes,
+retained/omitted routes and invalidations. Updated engines add `transfer`,
+`transfer_reason` and `storage` states. Missing optional diagnostics mean an
+older engine or renderer, not a successful cache save. Gzip caches remain scoped
+to the Site and Version, bounded to 32 MiB stored and 128 MiB decoded. Large
+sites retain a useful subset; missing routes render normally. Required output
+and publication verification are unchanged.

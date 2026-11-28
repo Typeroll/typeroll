@@ -350,15 +350,19 @@ export async function executeBuild(config, runnerToken, fetchImpl = fetch) {
       if (name.startsWith('.typeroll-runner/') || name.startsWith('.publication-cache.json') || name.startsWith('.publication-fonts/')) throw Error('reserved_build_source');
       const target = path.join(work, name); await fs.mkdir(path.dirname(target), { recursive: true }); await fs.writeFile(target, content, { flag: 'wx' });
     }
+    let cacheTransfer = 'not_supplied', cacheTransferReason = job.render_cache_state ?? 'pointer_missing';
     if (job.kind === 'publication' && job.render_cache) {
       try {
         const response = await fetchImpl(storageUrl(job.render_cache.url), { redirect: 'error', signal: AbortSignal.timeout(30000) });
-        if (!response.ok) throw Error(`HTTP ${response.status}`);
+        if (!response.ok) { cacheTransferReason = response.status === 404 ? 'object_missing' : 'http_error'; throw Error(`HTTP ${response.status}`); }
         const cached = await responseBytes(response, MAX_RENDER_CACHE_BYTES);
         if (sha256(cached) !== job.render_cache.sha256) throw Error('render_cache_integrity');
         await fs.writeFile(path.join(work, '.publication-cache.json'), cached, { flag: 'wx' });
+        cacheTransfer = 'downloaded'; cacheTransferReason = undefined;
       } catch (error) {
         // Optional: every page is rendered instead. The reason tells a storage outage from an expired cache.
+        cacheTransfer = error?.message === 'render_cache_integrity' ? 'integrity_failed' : 'download_failed';
+        cacheTransferReason = cacheTransfer === 'integrity_failed' ? 'integrity_failed' : cacheTransferReason === 'available' ? 'storage_unavailable' : cacheTransferReason;
         console.log(`TYPEROLL_RENDER_CACHE unavailable (${transferFailureReason(error)}); rendering every page without a baseline`);
       }
     }
@@ -546,6 +550,7 @@ export async function executeBuild(config, runnerToken, fetchImpl = fetch) {
         if (!stat.isFile() || stat.isSymbolicLink() || stat.nlink !== 1 || stat.size > 4096 || !(await fs.realpath(reportPath)).startsWith(work + path.sep)) throw Error('render_report_invalid');
         report = renderReport(JSON.parse(await fs.readFile(reportPath, 'utf8')));
       } catch { /* Older frozen renderers have no report. */ }
+      if (report?.cache) { report.cache.transfer = cacheTransfer; if (cacheTransferReason) report.cache.transfer_reason = cacheTransferReason; report.cache.storage = 'not_saved'; }
       if (job.render_cache_supported && report) {
         try {
           const cachePath = path.join(work, '.publication-cache.json');
@@ -554,8 +559,13 @@ export async function executeBuild(config, runnerToken, fetchImpl = fetch) {
           const cached = await fs.readFile(cachePath);
           const grant = await request('render-cache-upload', job.token, attempt);
           const response = await fetchImpl(storageUrl(grant.url), { method: 'PUT', redirect: 'error', signal: AbortSignal.timeout(30000), headers: { 'Content-Type': 'application/json' }, body: cached });
-          if (response.ok) cacheHash = sha256(cached);
-        } catch { console.log('TYPEROLL_RENDER_CACHE could not save optional baseline'); }
+          if (!response.ok) throw Error('render_cache_upload_failed');
+          cacheHash = sha256(cached);
+          if (report.cache) report.cache.storage = 'uploaded';
+        } catch {
+          if (report.cache) report.cache.storage = report.cache.save === 'write_failed' ? 'not_saved' : 'upload_failed';
+          console.log('TYPEROLL_RENDER_CACHE could not save optional baseline');
+        }
       }
     }
     await request('complete', job.token, { ...attempt, sha256: sha256(artifact), render_cache_sha256: cacheHash, render_report: report, seo_report: validation });

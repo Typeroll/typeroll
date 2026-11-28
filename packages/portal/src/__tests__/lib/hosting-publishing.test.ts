@@ -24,7 +24,7 @@ vi.mock('../../lib/builds/auto-update', async original => ({ ...await original<o
 vi.mock('../../lib/builds/selection', async original => ({ ...await original<object>(), selectedBuildProvider: async () => 'cloudflare' }));
 vi.mock('../../lib/builds/state', async original => ({ ...await original<object>(), readEngineConfiguration: mocks.engine }));
 vi.mock('../../lib/deploy/availability', () => ({ probePublication: mocks.probe }));
-vi.mock('../../lib/publishing/source-tree', () => ({ publicationSourceTree: mocks.source, freezePublicationRenderer: mocks.freezeRenderer }));
+vi.mock('../../lib/publishing/source-tree', () => ({ publicationSourceTree: mocks.source, freezePublicationRenderer: mocks.freezeRenderer, publicationRendererDigest: async () => undefined }));
 // Publications freeze theme fonts from Google; tests never reach the network.
 vi.mock('../../lib/publishing/theme-font-freeze', () => ({ freezeSiteFonts: async () => ({ plan: { render_version: 1, families: [], google_css_url: null, service_stylesheets: [] }, theme_fonts: null }) }));
 vi.mock('../../lib/publishing/runtime-projection', () => ({ publicationRuntime: async () => mocks.runtime ?? ({ forms: [], apps: { apps: {} }, extensions: { installations: [] }, dependencies: [] }) }));

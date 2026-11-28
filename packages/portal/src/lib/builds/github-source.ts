@@ -5,6 +5,7 @@ import uploaderLock from './uploader-lock.json?raw';
 import directUpload from './direct-upload.mjs?raw';
 import executor from './executor.mjs?raw';
 import contract from './contract.mjs?raw';
+import cacheReport from './render-cache-report.mjs?raw';
 import assets from './assets.mjs?raw';
 import diagnostics from './diagnostics.mjs?raw';
 import sandbox from './github-sandbox.mjs?raw';
@@ -13,7 +14,7 @@ import { BUILD_RUNTIME } from './contract.mjs';
 import { engineSourceDigest } from './engine-source';
 
 export function githubBuildFiles(origin: string, org: string, revision: string) {
-  return { 'package.json': uploaderPackage, 'package-lock.json': uploaderLock, 'static-verifier.mjs': staticVerifier, 'pages-redirect-limits.mjs': pagesRedirectLimits, 'direct-upload.mjs': directUpload.replace('../../../../shared/src/pages-redirect-limits.mjs', './pages-redirect-limits.mjs'), 'executor.mjs': executor, 'diagnostics.mjs': diagnostics, 'contract.mjs': contract, 'assets.mjs': assets, 'github-sandbox.mjs': sandbox, 'github-runner.mjs': runner,
+  return { 'package.json': uploaderPackage, 'package-lock.json': uploaderLock, 'static-verifier.mjs': staticVerifier, 'pages-redirect-limits.mjs': pagesRedirectLimits, 'direct-upload.mjs': directUpload.replace('../../../../shared/src/pages-redirect-limits.mjs', './pages-redirect-limits.mjs'), 'executor.mjs': executor, 'diagnostics.mjs': diagnostics, 'contract.mjs': contract, 'render-cache-report.mjs': cacheReport, 'assets.mjs': assets, 'github-sandbox.mjs': sandbox, 'github-runner.mjs': runner,
     'engine.json': JSON.stringify({ origin, org_id: org, revision }),
     'README.md': '# Typeroll GitHub builds\n\nGenerated organization runner. Typeroll dispatches frozen site/version publications explicitly. Source commits do not trigger builds. Images and hosting credentials are never stored in Git. Edit content in Typeroll.\n',
     '.github/workflows/build.yml': `name: Typeroll static build

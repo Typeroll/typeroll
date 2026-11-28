@@ -56,9 +56,10 @@ export type DeleteObjectInput = ObjectInput;
 
 export class PutObjectCommand { readonly kind = 'put'; constructor(readonly input: PutObjectInput) {} }
 export class GetObjectCommand { readonly kind = 'get'; constructor(readonly input: GetObjectInput) {} }
+export class HeadObjectCommand { readonly kind = 'head'; constructor(readonly input: ObjectInput) {} }
 export class CopyObjectCommand { readonly kind = 'copy'; constructor(readonly input: CopyObjectInput) {} }
 export class DeleteObjectCommand { readonly kind = 'delete'; constructor(readonly input: DeleteObjectInput) {} }
-type Command = PutObjectCommand | GetObjectCommand | CopyObjectCommand | DeleteObjectCommand;
+type Command = PutObjectCommand | GetObjectCommand | HeadObjectCommand | CopyObjectCommand | DeleteObjectCommand;
 
 /** A response body with the SDK's helpers; it is also async-iterable. */
 export type ObjectBody = ReadableStream<Uint8Array> & AsyncIterable<Uint8Array> & {
@@ -70,7 +71,7 @@ export interface PutObjectOutput { ETag?: string }
 export interface CopyObjectOutput { CopyObjectResult?: { ETag?: string; LastModified?: Date } }
 export type DeleteObjectOutput = Record<string, never>;
 
-type Output<C> = C extends GetObjectCommand ? GetObjectOutput : C extends PutObjectCommand ? PutObjectOutput
+type Output<C> = C extends GetObjectCommand | HeadObjectCommand ? GetObjectOutput : C extends PutObjectCommand ? PutObjectOutput
   : C extends CopyObjectCommand ? CopyObjectOutput : DeleteObjectOutput;
 
 /** An S3 error response: `name` is the S3 error code (`NoSuchKey`, `PreconditionFailed`, …). */
@@ -142,6 +143,7 @@ export class S3Client {
       for (const [name, value] of query) if (value !== undefined) url.searchParams.set(name, value);
       return { method: 'GET', url, headers };
     }
+    if (command instanceof HeadObjectCommand) return { method: 'HEAD', url, headers };
     if (command instanceof DeleteObjectCommand) return { method: 'DELETE', url, headers };
     set('content-type', command.input.ContentType);
     set('cache-control', command.input.CacheControl);
@@ -161,6 +163,7 @@ export class S3Client {
   }
 
   send(command: GetObjectCommand, options?: SendOptions): Promise<GetObjectOutput>;
+  send(command: HeadObjectCommand, options?: SendOptions): Promise<GetObjectOutput>;
   send(command: PutObjectCommand, options?: SendOptions): Promise<PutObjectOutput>;
   send(command: CopyObjectCommand, options?: SendOptions): Promise<CopyObjectOutput>;
   send(command: DeleteObjectCommand, options?: SendOptions): Promise<DeleteObjectOutput>;
@@ -196,7 +199,7 @@ export class S3Client {
       throw new S3ServiceError(tag(text, 'Code') ?? (response.status === 404 ? 'NotFound' : `Http${response.status}`), tag(text, 'Message') ?? '', response.status);
     }
     const etag = response.headers.get('etag') ?? undefined;
-    if (command instanceof GetObjectCommand) {
+    if (command instanceof GetObjectCommand || command instanceof HeadObjectCommand) {
       const length = response.headers.get('content-length');
       const modified = response.headers.get('last-modified');
       return {
